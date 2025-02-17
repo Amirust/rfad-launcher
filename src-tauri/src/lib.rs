@@ -16,19 +16,14 @@ async fn greet(name: &str) -> Result<String, ()> {
 }
 
 #[tauri::command]
-async fn download(app: AppHandle, id: &str) -> Result<String, ()> {
+async fn download(app: AppHandle, id: &str, file_name: &str) -> Result<String, ()> {
     let drive = gdrive::GoogleDriveClient::new().await;
-    // let res = drive.download_file(
-    //     id,
-    //     MimeType::Txt,
-    //     "D:\\Projects\\rfad-launcher\\test.txt",
-    //     app
-    // ).await;
+    let is_txt = file_name.ends_with(".txt");
 
     let res = drive.download_file(
         id,
-        MimeType::OctetStream,
-        "D:\\Projects\\rfad-launcher\\kavo.zip",
+        if is_txt { MimeType::Txt } else { MimeType::OctetStream },
+        format!("D:\\Projects\\rfad-launcher\\{}", file_name).as_str(),
         app
     ).await;
 
