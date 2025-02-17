@@ -5,8 +5,8 @@
   "identifier": "com.rfad-launcher.app",
   "build": {
     "beforeDevCommand": "bun run dev",
-    "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "bun run build",
+    "devUrl": "http://localhost:3000",
+    "beforeBuildCommand": "bun run generate",
     "frontendDist": "../dist"
   },
   "app": {
