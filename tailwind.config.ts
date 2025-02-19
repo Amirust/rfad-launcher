@@ -26,10 +26,12 @@ export default {
         primary: '#FFEABF',
         primaryHalf: '#FFEABF80',
         secondary: '#BFAF8F',
+        secondaryDarker: '#867A64',
         secondaryHalf: '#BFAF8F80',
         'primary-25': '#FFEABF40',
         'secondary-25': '#BFAF8F40',
         block: '#0D0C0A',
+        blockBorder: '#202020',
         error: '#D42E4F'
       }
     }
