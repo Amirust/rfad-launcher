@@ -11,6 +11,9 @@ export default {
   ],
   theme: {
     extend: {
+      padding: {
+        '18': '72px'
+      },
       screens: {
         // => @media (min-width: 1860px) { ... }
         '3xl': '1860px',
@@ -31,6 +34,7 @@ export default {
         'primary-25': '#FFEABF40',
         'secondary-25': '#BFAF8F40',
         block: '#0D0C0A',
+        blockTransparent: '#0d0c0ae6',
         blockBorder: '#202020',
         error: '#D42E4F'
       }
