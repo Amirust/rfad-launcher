@@ -13,7 +13,7 @@
 .background {
   background-image: url("assets/image/bg.webp");
   background-size: contain;
-  background-position: right;
+  background-position: 200px;
   background-repeat: no-repeat;
 }
 </style>

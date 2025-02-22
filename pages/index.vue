@@ -3,11 +3,24 @@
 import DiscordIcon from '~/components/icons/Discord.vue';
 import Cog from '~/components/icons/Cog.vue';
 import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
+import { type DownloadProgress, EventNames, type UpdateProgress, UpdateStatus } from '~/types/types';
+import config from '~/config';
 
 const localVersion = ref('Загружаем...')
 const remoteVersion = ref('Загружаем...')
 
+const updateStarted = ref(false)
+const updateDownloadStarted = ref(false)
+const updateDownloadSpeed = ref('0')
+const updateDownloadPercentage = ref(0)
+const updateDownloaded = ref(false)
+
 const updateAvailable = ref(false)
+
+const updatePercentage = computed(() => {
+  return +(+updateDownloadPercentage.value.toFixed(0) / 2).toFixed(0)
+})
 
 onMounted(async () => {
   invoke<string>('get_local_version').then(res => {
@@ -19,6 +32,37 @@ onMounted(async () => {
     updateAvailable.value = remoteVersion.value !== localVersion.value
   })
 })
+
+const update = async () => {
+  updateStarted.value = true
+
+  const unlistenUpdate = await listen<UpdateProgress>(EventNames.UpdateProgress,  async(data) => {
+    if (data.payload.status === UpdateStatus.DownloadStarted)
+      updateDownloadStarted.value = true
+
+    const unlistenDownload = await listenDownload(config.localUpdateFileName)
+
+    if (data.payload.status === UpdateStatus.DownloadFinished) {
+      updateDownloaded.value = true
+      updateDownloadStarted.value = false
+      unlistenDownload()
+    }
+  })
+
+  const result = await invoke('update')
+  console.log('update:result', result)
+
+  unlistenUpdate()
+}
+
+const listenDownload = async (fileName: string) => {
+  return await listen<DownloadProgress>(EventNames.DownloadProgress, (data) => {
+    if (data.payload.fileName !== fileName)
+      return;
+    updateDownloadSpeed.value = (data.payload.speedBytesPerSec / 1024 / 1024).toFixed(1)
+    updateDownloadPercentage.value = data.payload.percentage
+  })
+}
 </script>
 
 <template>
@@ -33,12 +77,14 @@ onMounted(async () => {
       </div>
       <div class="flex flex-col justify-between h-full">
         <h1 class="text-5xl text-gradient font-semibold">RFAD SE 6.0</h1>
-        <div class="text-white flex flex-col gap-4">
-          <transition name="fade">
-            <UpdateAvailableMessage :version="remoteVersion" v-if="updateAvailable" class="w-full"/>
-          </transition>
+        <div class="text-white flex flex-col gap-4 relative">
+          <transition-group name="fade">
+            <UpdatingMessage :percentage="updatePercentage" v-if="updateStarted" class="w-full"/>
+            <DownloadingMessage :speed="updateDownloadSpeed" :percentage="updateDownloadPercentage" v-if="updateDownloadStarted" class="w-full"/>
+            <UpdateAvailableMessage :version="remoteVersion" v-if="updateAvailable && !updateStarted" class="w-full"/>
+          </transition-group>
           <div class="flex flex-row gap-2.5">
-            <Button class="font-bold text-4xl text-primary tracking-wider">
+            <Button @click="update" class="font-bold text-4xl text-primary tracking-wider">
               ОБНОВИТЬ
             </Button>
             <Button :same-padding="true" class="font-bold text-4xl text-primary">

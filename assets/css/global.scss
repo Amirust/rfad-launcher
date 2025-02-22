@@ -40,11 +40,9 @@ html, body {
   .fade-leave-active {
     position: absolute;
     top: 0;
-    transform: translateY(0);
   }
   .fade-enter-from,
   .fade-leave-to {
     opacity: 0;
-    transform: translateY(0);
   }
 }

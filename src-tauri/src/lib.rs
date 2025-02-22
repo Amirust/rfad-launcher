@@ -1,20 +1,17 @@
 mod gdrive;
+mod events;
 
 use tauri::{AppHandle, Emitter, Manager};
 use std::env;
 use std::string::ToString;
 use tauri::utils::mime_type::MimeType;
+use crate::events::{UpdateProgress, UpdateStatus};
 
 const FOLDER_ID: &str = "1JUOctbsugh2IIEUCWcBkupXYVYoJMg4G";
 const BASE_DIR: &str = "D:\\RfaD SE\\MO2";
-
-#[tauri::command]
-async fn greet(name: &str) -> Result<String, ()> {
-    let drive = gdrive::GoogleDriveClient::new().await;
-    let res = drive.list_files(FOLDER_ID).await;
-
-    Ok(format!("Ку ёпта, {}! Раст сасёт\nFiles: {:?}", name, res))
-}
+const LOCAL_VERSION_FILE_NAME: &str = "version.txt";
+const REMOTE_VERSION_FILE_NAME: &str = "remote_version.txt";
+const LOCAL_UPDATE_FILE_NAME: &str = "update.zip";
 
 #[tauri::command]
 async fn download(app: AppHandle, id: &str, file_name: &str) -> Result<String, ()> {
@@ -33,7 +30,7 @@ async fn download(app: AppHandle, id: &str, file_name: &str) -> Result<String, (
 
 #[tauri::command]
 fn get_local_version() -> String {
-    let version_file_path = format!("{}/mods/RFAD_PATCH/version.txt", BASE_DIR);
+    let version_file_path = format!("{}/mods/RFAD_PATCH/{}", BASE_DIR, LOCAL_VERSION_FILE_NAME);
     if !std::path::Path::new(&version_file_path).exists() {
         return "NO_PATCH".to_string();
     }
@@ -46,8 +43,12 @@ async fn get_remote_version(app: AppHandle) -> String {
     let drive = gdrive::GoogleDriveClient::new().await;
     let res = drive.list_files(FOLDER_ID).await;
 
-    let remote_version_file_path = format!("{}/remote_version.txt", BASE_DIR);
-    if let Some((id, _)) = res.iter().find(|(_, name)| name == "version") {
+    app.emit("update:progress", UpdateProgress {
+        status: UpdateStatus::DownloadStarted as u8
+    }).ok();
+
+    let remote_version_file_path = format!("{}/{}", BASE_DIR, REMOTE_VERSION_FILE_NAME);
+    if let Some((id, _, _)) = res.iter().find(|(_, name, _)| name == "version") {
         drive.download_file(
             id,
             MimeType::Txt,
@@ -64,11 +65,39 @@ async fn get_remote_version(app: AppHandle) -> String {
     }
 }
 
+#[tauri::command]
+async fn update(app: AppHandle) -> bool {
+    let drive = gdrive::GoogleDriveClient::new().await;
+    let res = drive.list_files(FOLDER_ID).await;
+
+    // Get file with mime application/x-zip-compressed
+    let (id, _, _) = res.iter().find(|(_, name, mime)| mime == "application/x-zip-compressed").unwrap();
+
+    let zip_path = format!("{}/{}", BASE_DIR, LOCAL_UPDATE_FILE_NAME);
+
+    app.emit("update:progress", UpdateProgress {
+        status: UpdateStatus::DownloadStarted as u8
+    }).ok();
+
+    drive.download_file(
+        id,
+        MimeType::OctetStream,
+        zip_path.as_str(),
+        app.clone()
+    ).await.ok();
+
+    app.emit("update:progress", UpdateProgress {
+        status: UpdateStatus::DownloadFinished as u8
+    }).ok();
+
+    true
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![greet, download, get_local_version, get_remote_version])
+        .invoke_handler(tauri::generate_handler![download, get_local_version, get_remote_version, update])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

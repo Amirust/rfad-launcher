@@ -1,3 +1,8 @@
+#[path="./events.rs"]
+mod events;
+
+pub use events::DownloadProgress;
+
 use std::io;
 use google_drive3::{yup_oauth2, yup_oauth2::ServiceAccountKey, DriveHub, hyper_rustls::HttpsConnector, hyper_util::client::legacy::connect::HttpConnector};
 use hyper::body::{Body};
@@ -7,7 +12,6 @@ use tauri::{Emitter};
 use http_body_util::{BodyStream};
 use tokio::io::AsyncWriteExt;
 use futures::prelude::*;
-use serde_json::json;
 use tokio::io::AsyncReadExt;
 use futures::pin_mut;
 
@@ -55,7 +59,7 @@ impl GoogleDriveClient {
         }
     }
 
-    pub async fn list_files(&self, folder_id: &str) -> Vec<(String, String)> {
+    pub async fn list_files(&self, folder_id: &str) -> Vec<(String, String, String)> {
         let result = self
             .hub
             .files()
@@ -70,7 +74,7 @@ impl GoogleDriveClient {
                 if let Some(files) = file_list.files {
                     files
                         .into_iter()
-                        .map(|file| (file.id.unwrap_or_default(), file.name.unwrap_or_default()))
+                        .map(|file| (file.id.unwrap_or_default(), file.name.unwrap_or_default(), file.mime_type.unwrap_or_default()))
                         .collect()
                 } else {
                     vec![]
@@ -119,7 +123,7 @@ impl GoogleDriveClient {
         let mut reader = tokio_util::io::StreamReader::new(stream_of_bytes);
         pin_mut!(reader);
 
-        let mut buffer = vec![0u8; 8192];
+        let mut buffer = vec![0u8; 4 * 1024 * 1024];
         loop {
             let bytes_read = AsyncReadExt::read(&mut reader, &mut buffer).await.map_err(|e| e.to_string())?;
             if bytes_read == 0 {
@@ -133,11 +137,12 @@ impl GoogleDriveClient {
             let speed = if elapsed > 0.0 { (downloaded as f64 / elapsed) as u64 } else { 0 };
             let percentage = if total_size > 0 { (downloaded as f64 / total_size as f64) * 100.0 } else { 0.0 };
 
-            app.emit("download-progress", Some(json!({
-                "downloadedBytes": downloaded,
-                "percentage": percentage,
-                "speedBytesPerSec": speed
-            }))).ok();
+            app.emit("download:progress", Some(DownloadProgress{
+                download_bytes: downloaded,
+                percentage,
+                speed_bytes_per_sec: speed,
+                file_name: output_path.split("/").last().unwrap_or_default().to_string()
+            })).ok();
         }
 
         file.flush().await.map_err(|e| e.to_string())?;
