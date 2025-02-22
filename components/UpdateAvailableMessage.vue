@@ -1,6 +1,9 @@
 <script setup lang="ts">
-
 import MessageBox from '~/components/base/MessageBox.vue';
+
+const props = defineProps<{
+  version: string
+}>();
 </script>
 
 <template>
@@ -10,7 +13,7 @@ import MessageBox from '~/components/base/MessageBox.vue';
         Доступно обновление!
       </div>
       <div>
-        28.02
+        {{ version }}
       </div>
     </div>
   </MessageBox>

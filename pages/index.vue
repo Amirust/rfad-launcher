@@ -2,6 +2,23 @@
 
 import DiscordIcon from '~/components/icons/Discord.vue';
 import Cog from '~/components/icons/Cog.vue';
+import { invoke } from '@tauri-apps/api/core';
+
+const localVersion = ref('Загружаем...')
+const remoteVersion = ref('Загружаем...')
+
+const updateAvailable = ref(false)
+
+onMounted(async () => {
+  invoke<string>('get_local_version').then(res => {
+    localVersion.value = res === 'NO_PATCH' ? '0.0' : res
+  })
+  invoke<string>('get_remote_version').then(res => {
+    remoteVersion.value = res === 'NO_PATCH' ? '0.0' : res
+
+    updateAvailable.value = remoteVersion.value !== localVersion.value
+  })
+})
 </script>
 
 <template>
@@ -17,7 +34,9 @@ import Cog from '~/components/icons/Cog.vue';
       <div class="flex flex-col justify-between h-full">
         <h1 class="text-5xl text-gradient font-semibold">RFAD SE 6.0</h1>
         <div class="text-white flex flex-col gap-4">
-          <UpdateAvailableMessage class="w-full"/>
+          <transition name="fade">
+            <UpdateAvailableMessage :version="remoteVersion" v-if="updateAvailable" class="w-full"/>
+          </transition>
           <div class="flex flex-row gap-2.5">
             <Button class="font-bold text-4xl text-primary tracking-wider">
               ОБНОВИТЬ
@@ -28,12 +47,12 @@ import Cog from '~/components/icons/Cog.vue';
           </div>
           <div class="flex flex-col w-full">
             <div class="flex flex-row w-full">
-              <span class="text-secondary font-medium w-24 tracking-wide">Установлена:</span>
-              <span class="text-primary font-semibold tracking-wide">16.01</span>
+              <span class="text-secondary font-medium w-24 mr-2 tracking-wide">Установлена:</span>
+              <span class="text-primary font-semibold tracking-wide">{{ localVersion }}</span>
             </div>
             <div class="flex flex-row w-full">
-              <span class="text-secondary font-medium w-24 tracking-wide">Актуальная:</span>
-              <span class="text-primary font-semibold tracking-wide">28.02</span>
+              <span class="text-secondary font-medium w-24 mr-2 tracking-wide">Актуальная:</span>
+              <span class="text-primary font-semibold tracking-wide">{{ remoteVersion }}</span>
             </div>
           </div>
         </div>

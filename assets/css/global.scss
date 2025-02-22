@@ -11,3 +11,40 @@
 * {
   @apply select-none;
 }
+
+
+html, body {
+  -webkit-font-smoothing:antialiased;
+  -webkit-backface-visibility:hidden;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fade-enter-active,
+  .fade-leave-active {
+    transition: none !important;
+  }
+  .fade-move {
+    transition: none !important;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .fade-enter-active,
+  .fade-leave-active {
+    transition: opacity 0.3s, transform 0.3s;
+  }
+  .fade-move {
+    transition: transform 0.3s;
+  }
+  .fade-leave-active {
+    position: absolute;
+    top: 0;
+    transform: translateY(0);
+  }
+  .fade-enter-from,
+  .fade-leave-to {
+    opacity: 0;
+    transform: translateY(0);
+  }
+}
