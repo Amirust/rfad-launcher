@@ -6,7 +6,9 @@ use std::env;
 use std::fs::File;
 use std::path::PathBuf;
 use std::string::ToString;
+use std::time::Duration;
 use tauri::utils::mime_type::MimeType;
+use tokio::time::sleep;
 use zip::ZipArchive;
 use crate::events::{UnpackProgress, UpdateProgress, UpdateStatus};
 
@@ -16,7 +18,9 @@ const LOCAL_VERSION_FILE_NAME: &str = "version.txt";
 const REMOTE_VERSION_FILE_NAME: &str = "remote_version.txt";
 const LOCAL_UPDATE_FILE_NAME: &str = "update.zip";
 
-fn unpack(mut archive: ZipArchive<File>, output: String, app: &AppHandle) {
+async fn unpack(mut archive: ZipArchive<File>, output: String, app: &AppHandle) {
+    sleep(Duration::from_millis(400)).await;
+
     let total_files = archive.len();
     for i in 0..total_files {
         let mut file = archive.by_index(i).unwrap();
@@ -98,7 +102,6 @@ async fn update(app: AppHandle) -> bool {
     let drive = gdrive::GoogleDriveClient::new().await;
     let res = drive.list_files(FOLDER_ID).await;
 
-    // Get file with mime application/x-zip-compressed
     let (id, _, _) = res.iter().find(|(_, name, mime)| mime == "application/x-zip-compressed").unwrap();
 
     let zip_path = format!("{}/{}", BASE_DIR, LOCAL_UPDATE_FILE_NAME);
@@ -132,7 +135,7 @@ async fn update(app: AppHandle) -> bool {
         status: UpdateStatus::UnpackStarted as u8
     }).ok();
 
-    unpack(archive, patch_dir, &app);
+    unpack(archive, patch_dir, &app).await;
 
     app.emit("update:progress", UpdateProgress {
         status: UpdateStatus::UnpackFinished as u8

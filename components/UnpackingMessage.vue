@@ -17,7 +17,6 @@ const gradientStyle = computed(() => {
 <template>
   <MessageBox>
     <div class="flex flex-col w-full gap-1.5 items-center text-primary font-semibold text-sm tracking-wide">
-      <div class="w-full h-1 percentage-gradient rounded-md" :style="gradientStyle"></div>
       <div class="flex w-full flex-row justify-between">
         <div>
           Распаковка...
@@ -26,6 +25,7 @@ const gradientStyle = computed(() => {
           {{ percentage.toFixed(0) }}%
         </div>
       </div>
+      <div class="w-full h-1 percentage-gradient rounded-md" :style="gradientStyle"></div>
     </div>
   </MessageBox>
 </template>

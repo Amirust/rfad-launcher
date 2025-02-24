@@ -67,14 +67,14 @@ const update = async () => {
 
   await invoke('update')
 
-  unlistenUpdate()
-
   updateStarted.value = false
 
   invoke<string>('get_local_version').then(res => {
     localVersion.value = res === 'NO_PATCH' ? '0.0' : res
     updateAvailable.value = remoteVersion.value !== localVersion.value
   })
+
+  unlistenUpdate()
 }
 
 const listenDownload = async (fileName: string) => {
@@ -105,8 +105,8 @@ const listenUnpack = async () => {
       </div>
       <div class="flex flex-col justify-between h-full">
         <h1 class="text-5xl text-gradient font-semibold">RFAD SE 6.0</h1>
-        <div class="text-white flex flex-col gap-4 relative">
-          <transition-group name="fade">
+        <div class="flex flex-col gap-4 relative">
+          <transition-group name="fade" tag="div" class="relative flex flex-col gap-4">
             <UpdatingMessage :percentage="updatePercentage" v-if="updateStarted" class="w-full"/>
             <UnpackingMessage :percentage="updateUnpackPercentage" v-if="updateUnpackStarted" class="w-full"/>
             <DownloadingMessage :speed="updateDownloadSpeed" :percentage="updateDownloadPercentage" v-if="updateDownloadStarted" class="w-full"/>
