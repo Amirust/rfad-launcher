@@ -23,3 +23,9 @@ pub struct DownloadProgress {
     pub percentage: f64,
     pub speed_bytes_per_sec: u64
 }
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UnpackProgress {
+    pub percentage: f64,
+}

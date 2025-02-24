@@ -3,15 +3,43 @@ mod events;
 
 use tauri::{AppHandle, Emitter, Manager};
 use std::env;
+use std::fs::File;
+use std::path::PathBuf;
 use std::string::ToString;
 use tauri::utils::mime_type::MimeType;
-use crate::events::{UpdateProgress, UpdateStatus};
+use zip::ZipArchive;
+use crate::events::{UnpackProgress, UpdateProgress, UpdateStatus};
 
 const FOLDER_ID: &str = "1JUOctbsugh2IIEUCWcBkupXYVYoJMg4G";
 const BASE_DIR: &str = "D:\\RfaD SE\\MO2";
 const LOCAL_VERSION_FILE_NAME: &str = "version.txt";
 const REMOTE_VERSION_FILE_NAME: &str = "remote_version.txt";
 const LOCAL_UPDATE_FILE_NAME: &str = "update.zip";
+
+fn unpack(mut archive: ZipArchive<File>, output: String, app: &AppHandle) {
+    let total_files = archive.len();
+    for i in 0..total_files {
+        let mut file = archive.by_index(i).unwrap();
+        let outpath = PathBuf::from(output.clone()).join(file.enclosed_name().unwrap());
+
+        if file.is_dir() {
+            std::fs::create_dir_all(&outpath).unwrap();
+        } else {
+            if let Some(p) = outpath.parent() {
+                if !p.exists() {
+                    std::fs::create_dir_all(p).unwrap();
+                }
+            }
+            let mut outfile = File::create(&outpath).unwrap();
+            std::io::copy(&mut file, &mut outfile).unwrap();
+        }
+
+        let percentage = ((i + 1) as f64 / total_files as f64) * 100.0;
+        app.emit("unpack:progress", UnpackProgress {
+            percentage
+        }).ok();
+    }
+}
 
 #[tauri::command]
 async fn download(app: AppHandle, id: &str, file_name: &str) -> Result<String, ()> {
@@ -88,6 +116,26 @@ async fn update(app: AppHandle) -> bool {
 
     app.emit("update:progress", UpdateProgress {
         status: UpdateStatus::DownloadFinished as u8
+    }).ok();
+
+    let patch_dir = format!("{}/mods/RFAD_PATCH", BASE_DIR);
+    if std::fs::exists(&patch_dir).unwrap() {
+        std::fs::remove_dir_all(&patch_dir).unwrap();
+    } else {
+        std::fs::create_dir_all(&patch_dir).unwrap();
+    }
+
+    let zip_file = File::open(zip_path).unwrap();
+    let archive = ZipArchive::new(zip_file).unwrap();
+
+    app.emit("update:progress", UpdateProgress {
+        status: UpdateStatus::UnpackStarted as u8
+    }).ok();
+
+    unpack(archive, patch_dir, &app);
+
+    app.emit("update:progress", UpdateProgress {
+        status: UpdateStatus::UnpackFinished as u8
     }).ok();
 
     true

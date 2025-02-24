@@ -16,7 +16,12 @@ export interface DownloadProgress {
   speedBytesPerSec: number;
 }
 
+export interface UnpackProgress {
+  percentage: number;
+}
+
 export enum EventNames {
   UpdateProgress = 'update:progress',
   DownloadProgress = 'download:progress',
+  UnpackProgress = 'unpack:progress',
 }

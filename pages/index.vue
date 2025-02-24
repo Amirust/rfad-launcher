@@ -4,22 +4,27 @@ import DiscordIcon from '~/components/icons/Discord.vue';
 import Cog from '~/components/icons/Cog.vue';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import { type DownloadProgress, EventNames, type UpdateProgress, UpdateStatus } from '~/types/types';
+import { type DownloadProgress, EventNames, type UnpackProgress, type UpdateProgress, UpdateStatus } from '~/types/types';
 import config from '~/config';
 
 const localVersion = ref('Загружаем...')
 const remoteVersion = ref('Загружаем...')
 
 const updateStarted = ref(false)
+
 const updateDownloadStarted = ref(false)
 const updateDownloadSpeed = ref('0')
 const updateDownloadPercentage = ref(0)
 const updateDownloaded = ref(false)
 
+const updateUnpackStarted = ref(false)
+const updateUnpackPercentage = ref(0)
+const updateUnpacked = ref(false)
+
 const updateAvailable = ref(false)
 
 const updatePercentage = computed(() => {
-  return +(+updateDownloadPercentage.value.toFixed(0) / 2).toFixed(0)
+  return (+(+updateDownloadPercentage.value.toFixed(0) / 2).toFixed(0)) + (+(+updateUnpackPercentage.value.toFixed(0) / 2.1).toFixed(0)) + (updateStarted ? 0 : 2)
 })
 
 onMounted(async () => {
@@ -47,12 +52,29 @@ const update = async () => {
       updateDownloadStarted.value = false
       unlistenDownload()
     }
+
+    const unlistenUnpack = await listenUnpack()
+
+    if (data.payload.status === UpdateStatus.UnpackStarted)
+      updateUnpackStarted.value = true
+
+    if (data.payload.status === UpdateStatus.UnpackFinished) {
+      updateUnpacked.value = true
+      updateUnpackStarted.value = false
+      unlistenUnpack()
+    }
   })
 
-  const result = await invoke('update')
-  console.log('update:result', result)
+  await invoke('update')
 
   unlistenUpdate()
+
+  updateStarted.value = false
+
+  invoke<string>('get_local_version').then(res => {
+    localVersion.value = res === 'NO_PATCH' ? '0.0' : res
+    updateAvailable.value = remoteVersion.value !== localVersion.value
+  })
 }
 
 const listenDownload = async (fileName: string) => {
@@ -61,6 +83,12 @@ const listenDownload = async (fileName: string) => {
       return;
     updateDownloadSpeed.value = (data.payload.speedBytesPerSec / 1024 / 1024).toFixed(1)
     updateDownloadPercentage.value = data.payload.percentage
+  })
+}
+
+const listenUnpack = async () => {
+  return await listen<UnpackProgress>(EventNames.UnpackProgress, (data) => {
+    updateUnpackPercentage.value = data.payload.percentage
   })
 }
 </script>
@@ -80,6 +108,7 @@ const listenDownload = async (fileName: string) => {
         <div class="text-white flex flex-col gap-4 relative">
           <transition-group name="fade">
             <UpdatingMessage :percentage="updatePercentage" v-if="updateStarted" class="w-full"/>
+            <UnpackingMessage :percentage="updateUnpackPercentage" v-if="updateUnpackStarted" class="w-full"/>
             <DownloadingMessage :speed="updateDownloadSpeed" :percentage="updateDownloadPercentage" v-if="updateDownloadStarted" class="w-full"/>
             <UpdateAvailableMessage :version="remoteVersion" v-if="updateAvailable && !updateStarted" class="w-full"/>
           </transition-group>
