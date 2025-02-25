@@ -3,7 +3,8 @@ mod events;
 
 use tauri::{AppHandle, Emitter, Manager};
 use std::env;
-use std::fs::File;
+use std::fs::{File, OpenOptions};
+use std::io::{Error, Read, Seek, SeekFrom, Write};
 use std::path::PathBuf;
 use std::string::ToString;
 use std::time::Duration;
@@ -14,6 +15,7 @@ use crate::events::{UnpackProgress, UpdateProgress, UpdateStatus};
 
 const FOLDER_ID: &str = "1JUOctbsugh2IIEUCWcBkupXYVYoJMg4G";
 const BASE_DIR: &str = "D:\\RfaD SE\\MO2";
+const PROFILE_DIR: &str = "D:\\RfaD SE\\MO2\\profiles\\RfaD SE 5.2";
 const LOCAL_VERSION_FILE_NAME: &str = "version.txt";
 const REMOTE_VERSION_FILE_NAME: &str = "remote_version.txt";
 const LOCAL_UPDATE_FILE_NAME: &str = "update.zip";
@@ -43,6 +45,69 @@ async fn unpack(mut archive: ZipArchive<File>, output: String, app: &AppHandle) 
             percentage
         }).ok();
     }
+}
+
+async fn new_load_order() -> Result<String, ()> {
+    let drive = gdrive::GoogleDriveClient::new().await;
+    let res = drive.list_files(FOLDER_ID).await;
+
+    let (id, _, _) = res.iter().find(|(_, name, mime)| name == "modlist").unwrap();
+
+    let new_order = drive.load_text(
+        id,
+    ).await.expect("Error downloading load order file");
+
+    if new_order.len() == 0 {
+        Err(())
+    } else {
+        Ok(new_order)
+    }
+}
+
+fn remove_whitespace(s: &str) -> String {
+    s.trim().replace("\u{FEFF}", "")
+}
+
+fn update_modlist() {
+    let path_to_file = format!("{}/modlist.txt", PROFILE_DIR);
+    let mut file = OpenOptions::new().read(true).write(true).open(path_to_file).unwrap();
+
+    let mut loadorder = String::new();
+    file.read_to_string(&mut loadorder).unwrap();
+
+    let new_modlist = format!("+RFAD_PATCH\n{}", loadorder.replace("+RFAD_PATCH\n", ""));
+
+    file.seek(SeekFrom::Start(0)).unwrap();
+    file.write_all(new_modlist.as_bytes()).unwrap();
+    file.set_len(new_modlist.len() as u64).unwrap();
+}
+
+async fn update_order(path_to_file: &str, new_list: &str, separator: &str) -> Result<(), Error> {
+    let mut file = OpenOptions::new().read(true).write(true).open(path_to_file)?;
+
+    let mut loadorder = String::new();
+    file.read_to_string(&mut loadorder)?;
+
+    let mod_list: Vec<String> = if separator == "Requiem for the Indifferent.esp" {
+        new_list.lines().map(|x| x.to_string()).collect()
+    } else {
+        new_list.lines().map(|x| format!("*{}", x)).collect()
+    };
+
+    for x in &mod_list {
+        loadorder = loadorder.replace(x, "");
+    }
+
+    if let Some((head, tail)) = loadorder.split_once(separator) {
+        let new_list_str = mod_list.join("\n");
+        let updated_content = format!("{}\n{}\n{}{}", head.trim_end(), new_list_str, separator, tail);
+
+        file.seek(SeekFrom::Start(0))?;
+        file.write_all(updated_content.as_bytes())?;
+        file.set_len(updated_content.len() as u64)?;
+    }
+
+    Ok(())
 }
 
 #[tauri::command]
@@ -139,6 +204,32 @@ async fn update(app: AppHandle) -> bool {
 
     app.emit("update:progress", UpdateProgress {
         status: UpdateStatus::UnpackFinished as u8
+    }).ok();
+
+    let new_list = remove_whitespace(&*new_load_order().await.unwrap());
+
+    app.emit("update:progress", UpdateProgress {
+        status: UpdateStatus::LoadOrderUpdateStarted as u8
+    }).ok();
+
+    update_modlist();
+
+    if new_list.len() > 0 {
+        update_order(
+            format!("{}/plugins.txt", PROFILE_DIR).as_str(),
+            new_list.as_str(),
+            "Requiem for the Indifferent.esp"
+        ).await.expect("Error updating load order");
+
+        update_order(
+            format!("{}/loadorder.txt", PROFILE_DIR).as_str(),
+            new_list.as_str(),
+            "Requiem for the Indifferent.esp"
+        ).await.expect("Error updating load order");
+    }
+
+    app.emit("update:progress", UpdateProgress {
+        status: UpdateStatus::LoadOrderUpdateFinished as u8
     }).ok();
 
     true

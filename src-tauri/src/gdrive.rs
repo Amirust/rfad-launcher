@@ -14,6 +14,7 @@ use tokio::io::AsyncWriteExt;
 use futures::prelude::*;
 use tokio::io::AsyncReadExt;
 use futures::pin_mut;
+use google_drive3::common::to_bytes;
 
 const SCOPE: &str = "https://www.googleapis.com/auth/drive";
 
@@ -147,5 +148,22 @@ impl GoogleDriveClient {
 
         file.flush().await.map_err(|e| e.to_string())?;
         Ok(())
+    }
+
+    pub async fn load_text(&self, file_id: &str) -> Result<String, ()> {
+        let response = self.hub.files()
+            .export(file_id, "text/plain")
+            .param("alt", "media")
+            .add_scope(SCOPE)
+            .doit()
+            .await
+            .expect("Error downloading file");
+
+        let body = response.into_body();
+        let bytes = to_bytes(body).await.expect("Error reading bytes");
+
+        let text = String::from_utf8(Vec::from(bytes)).expect("Error converting bytes to string");
+
+        Ok(text)
     }
 }

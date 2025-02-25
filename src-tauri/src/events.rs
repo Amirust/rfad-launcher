@@ -7,6 +7,8 @@ pub enum UpdateStatus {
     DownloadFinished = 1,
     UnpackStarted = 2,
     UnpackFinished = 3,
+    LoadOrderUpdateStarted = 4,
+    LoadOrderUpdateFinished = 5
 }
 
 #[derive(Clone, Serialize)]

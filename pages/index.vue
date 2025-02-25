@@ -23,9 +23,13 @@ const updateUnpacked = ref(false)
 
 const updateAvailable = ref(false)
 
+const additionalProgress = ref(0)
+
 const updatePercentage = computed(() => {
-  return (+(+updateDownloadPercentage.value.toFixed(0) / 2).toFixed(0)) + (+(+updateUnpackPercentage.value.toFixed(0) / 2.1).toFixed(0)) + (updateStarted ? 0 : 2)
+  return (+(+updateDownloadPercentage.value.toFixed(0) / 2).toFixed(0)) + (+(+updateUnpackPercentage.value.toFixed(0) / 2.1).toFixed(0)) + additionalProgress.value
 })
+
+const wait = (ms = 1000) => new Promise(resolve => setTimeout(resolve, ms))
 
 onMounted(async () => {
   invoke<string>('get_local_version').then(res => {
@@ -39,6 +43,12 @@ onMounted(async () => {
 })
 
 const update = async () => {
+  updateDownloadPercentage.value = 0
+  updateUnpackPercentage.value = 0
+  additionalProgress.value = 0
+  updateDownloaded.value = false
+  updateUnpacked.value = false
+
   updateStarted.value = true
 
   const unlistenUpdate = await listen<UpdateProgress>(EventNames.UpdateProgress,  async(data) => {
@@ -63,9 +73,21 @@ const update = async () => {
       updateUnpackStarted.value = false
       unlistenUnpack()
     }
+
+    if (data.payload.status === UpdateStatus.LoadOrderUpdateStarted) {
+      additionalProgress.value += 1
+      console.log('LoadOrderUpdateStarted')
+    }
+
+    if (data.payload.status === UpdateStatus.LoadOrderUpdateFinished) {
+      additionalProgress.value += 1
+      console.log('LoadOrderUpdateFinished')
+    }
   })
 
   await invoke('update')
+
+  await wait(300)
 
   updateStarted.value = false
 

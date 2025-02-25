@@ -3,6 +3,8 @@ export enum UpdateStatus {
   DownloadFinished,
   UnpackStarted,
   UnpackFinished,
+  LoadOrderUpdateStarted,
+  LoadOrderUpdateFinished,
 }
 
 export interface UpdateProgress {
