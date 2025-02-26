@@ -6,6 +6,11 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { type DownloadProgress, EventNames, type UnpackProgress, type UpdateProgress, UpdateStatus } from '~/types/types';
 import config from '~/config';
+import Download from '~/components/icons/Download.vue';
+import Package from '~/components/icons/Package.vue';
+import Folder from '~/components/icons/Folder.vue';
+
+const firstStart = ref(true)
 
 const localVersion = ref('Загружаем...')
 const remoteVersion = ref('Загружаем...')
@@ -25,6 +30,9 @@ const updateAvailable = ref(false)
 
 const additionalProgress = ref(0)
 
+const dirError = ref(false)
+const isGameStarting = ref(false)
+
 const updatePercentage = computed(() => {
   return (+(+updateDownloadPercentage.value.toFixed(0) / 2).toFixed(0)) + (+(+updateUnpackPercentage.value.toFixed(0) / 2.1).toFixed(0)) + additionalProgress.value
 })
@@ -32,10 +40,17 @@ const updatePercentage = computed(() => {
 const wait = (ms = 1000) => new Promise(resolve => setTimeout(resolve, ms))
 
 onMounted(async () => {
+  firstStart.value = !localStorage.getItem('lastUpdate')
+
   invoke<string>('get_local_version').then(res => {
     localVersion.value = res === 'NO_PATCH' ? '0.0' : res
   })
   invoke<string>('get_remote_version').then(res => {
+    if (res === 'NO_DIR') {
+      remoteVersion.value = '0.0'
+      dirError.value = true
+      return
+    }
     remoteVersion.value = res === 'NO_PATCH' ? '0.0' : res
 
     updateAvailable.value = remoteVersion.value !== localVersion.value
@@ -89,6 +104,9 @@ const update = async () => {
 
   await wait(300)
 
+  localStorage.setItem('lastUpdate', Date.now().toString())
+  firstStart.value = !localStorage.getItem('lastUpdate')
+
   updateStarted.value = false
 
   invoke<string>('get_local_version').then(res => {
@@ -113,6 +131,18 @@ const listenUnpack = async () => {
     updateUnpackPercentage.value = data.payload.percentage
   })
 }
+
+const processButtonClick = async () => {
+  if (firstStart.value)
+    await update()
+  else {
+    isGameStarting.value = true
+    await invoke('start_game')
+
+    await wait(30_000)
+    isGameStarting.value = false
+  }
+}
 </script>
 
 <template>
@@ -120,7 +150,9 @@ const listenUnpack = async () => {
     <div class="flex flex-row gap-6 z-40">
       <div class="flex flex-col justify-between min-h-full">
         <CircleButton v-for="i in 7">
-          <DiscordIcon class="w-9 text-secondary"/>
+          <a href="https://google.com" target="_blank">
+            <DiscordIcon class="w-9 text-secondary"/>
+          </a>
         </CircleButton>
       </div>
       <div class="horizontal-divider">
@@ -129,18 +161,42 @@ const listenUnpack = async () => {
         <h1 class="text-5xl text-gradient font-semibold">RFAD SE 6.0</h1>
         <div class="flex flex-col gap-4 relative">
           <transition-group name="fade" tag="div" class="relative flex flex-col gap-4">
+            <DirErrorMessage v-if="dirError" class="w-full"/>
             <UpdatingMessage :percentage="updatePercentage" v-if="updateStarted" class="w-full"/>
             <UnpackingMessage :percentage="updateUnpackPercentage" v-if="updateUnpackStarted" class="w-full"/>
             <DownloadingMessage :speed="updateDownloadSpeed" :percentage="updateDownloadPercentage" v-if="updateDownloadStarted" class="w-full"/>
             <UpdateAvailableMessage :version="remoteVersion" v-if="updateAvailable && !updateStarted" class="w-full"/>
           </transition-group>
           <div class="flex flex-row gap-2.5">
-            <Button @click="update" class="font-bold text-4xl text-primary tracking-wider">
-              ОБНОВИТЬ
+            <Button
+              @click="processButtonClick"
+              class="font-bold text-4xl text-primary tracking-wider uppercase min-w-72"
+              :class="{
+                'cursor-pointer': !isGameStarting && !updateStarted,
+                'cursor-not-allowed text-secondary pointer-events-none': isGameStarting || updateStarted
+              }"
+            >
+              {{ firstStart ? 'Обновить' : 'Играть' }}
             </Button>
-            <Button :same-padding="true" class="font-bold text-4xl text-primary">
+            <DropdownButton :same-padding="true" class="font-bold text-4xl text-primary">
               <Cog class="w-11 text-primary"/>
-            </Button>
+              <template #dropdown>
+                <div class="flex flex-col px-4 py-1.5 gap-1.5 min-w-max font-semibold text-base">
+                  <div class="flex flex-row gap-2 items-center cursor-pointer hover:opacity-75 transition-opacity">
+                    <Download class="w-4 h-4"/>
+                    Обновить игру
+                  </div>
+                  <div class="flex flex-row gap-2 items-center cursor-pointer hover:opacity-75 transition-opacity">
+                    <Package class="w-4 h-4"/>
+                    Открыть МО2
+                  </div>
+                  <div class="flex flex-row gap-2 items-center cursor-pointer hover:opacity-75 transition-opacity">
+                    <Folder class="w-4 h-4"/>
+                    Открыть папку
+                  </div>
+                </div>
+              </template>
+            </DropdownButton>
           </div>
           <div class="flex flex-col w-full">
             <div class="flex flex-row w-full">
@@ -159,7 +215,7 @@ const listenUnpack = async () => {
   </div>
 </template>
 
-<style scoped>
+<style lang="scss">
 .horizontal-divider {
   background-image: radial-gradient(circle, theme('colors.secondaryDarker'), #000000);
   width: 1px;

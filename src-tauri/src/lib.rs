@@ -14,7 +14,7 @@ use zip::ZipArchive;
 use crate::events::{UnpackProgress, UpdateProgress, UpdateStatus};
 
 const FOLDER_ID: &str = "1JUOctbsugh2IIEUCWcBkupXYVYoJMg4G";
-const BASE_DIR: &str = "D:\\RfaD SE\\MO2";
+const BASE_DIR: &str = "D:/RfaD SE/MO2";
 const PROFILE_DIR: &str = "D:\\RfaD SE\\MO2\\profiles\\RfaD SE 5.2";
 const LOCAL_VERSION_FILE_NAME: &str = "version.txt";
 const REMOTE_VERSION_FILE_NAME: &str = "remote_version.txt";
@@ -146,12 +146,15 @@ async fn get_remote_version(app: AppHandle) -> String {
 
     let remote_version_file_path = format!("{}/{}", BASE_DIR, REMOTE_VERSION_FILE_NAME);
     if let Some((id, _, _)) = res.iter().find(|(_, name, _)| name == "version") {
-        drive.download_file(
-            id,
-            MimeType::Txt,
-            remote_version_file_path.as_str(),
-            app
-        ).await.expect("Error downloading version file");
+       match drive.download_file(
+           id,
+           MimeType::Txt,
+           remote_version_file_path.as_str(),
+           app
+       ).await {
+          Ok(_) => {},
+          Err(_) => return "NO_DIR".to_string()
+       }
 
         let version = std::fs::read_to_string(&remote_version_file_path).unwrap();
 
@@ -235,11 +238,20 @@ async fn update(app: AppHandle) -> bool {
     true
 }
 
+#[tauri::command]
+fn start_game() {
+    let _ = std::process::Command::new("D:\\RfaD SE\\MO2\\ModOrganizer.exe")
+        .current_dir("D:\\RfaD SE\\MO2")
+        .arg("moshortcut://:SKSE")
+        .spawn()
+        .expect("Failed to start game");
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![download, get_local_version, get_remote_version, update])
+        .invoke_handler(tauri::generate_handler![download, get_local_version, get_remote_version, update, start_game])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

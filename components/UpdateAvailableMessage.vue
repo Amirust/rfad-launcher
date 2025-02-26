@@ -13,7 +13,7 @@ const props = defineProps<{
         Доступно обновление!
       </div>
       <div>
-        {{ version }}
+        {{ props.version }}
       </div>
     </div>
   </MessageBox>
