@@ -6,9 +6,11 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { type DownloadProgress, EventNames, type UnpackProgress, type UpdateProgress, UpdateStatus } from '~/types/types';
 import config from '~/config';
-import Download from '~/components/icons/Download.vue';
-import Package from '~/components/icons/Package.vue';
-import Folder from '~/components/icons/Folder.vue';
+import Telegram from '~/components/icons/Telegram.vue';
+import Vk from '~/components/icons/Vk.vue';
+import Boosty from '~/components/icons/Boosty.vue';
+import FolderSmallStroke from '~/components/icons/FolderSmallStroke.vue';
+import UpdateConfirmationMessage from '~/components/UpdateConfirmationMessage.vue';
 
 const firstStart = ref(true)
 
@@ -37,6 +39,8 @@ const updatePercentage = computed(() => {
   return (+(+updateDownloadPercentage.value.toFixed(0) / 2).toFixed(0)) + (+(+updateUnpackPercentage.value.toFixed(0) / 2.1).toFixed(0)) + additionalProgress.value
 })
 
+const showConfirmation = ref(false)
+
 const wait = (ms = 1000) => new Promise(resolve => setTimeout(resolve, ms))
 
 onMounted(async () => {
@@ -57,10 +61,18 @@ onMounted(async () => {
   })
 })
 
-const update = async () => {
+const update = async (isFirstStart: boolean = false) => {
+  if (!isFirstStart && !showConfirmation.value) {
+    showConfirmation.value = true
+    return
+  }
+
+  showConfirmation.value = false
+
   updateDownloadPercentage.value = 0
   updateUnpackPercentage.value = 0
   additionalProgress.value = 0
+  updateDownloadSpeed.value = '0'
   updateDownloaded.value = false
   updateUnpacked.value = false
 
@@ -134,7 +146,7 @@ const listenUnpack = async () => {
 
 const processButtonClick = async () => {
   if (firstStart.value)
-    await update()
+    await update(true)
   else {
     isGameStarting.value = true
     await invoke('start_game')
@@ -143,16 +155,50 @@ const processButtonClick = async () => {
     isGameStarting.value = false
   }
 }
+
+const openExplorer = async () => {
+  await invoke('open_explorer')
+}
+
+const openMo2 = async () => {
+  await invoke('open_mo2')
+}
 </script>
 
 <template>
   <div class="px-10 py-10 flex flex-row w-full h-full min-h-svh relative overflow-hidden">
     <div class="flex flex-row gap-6 z-40">
       <div class="flex flex-col justify-between min-h-full">
-        <CircleButton v-for="i in 7">
-          <a href="https://google.com" target="_blank">
+        <a :href="config.discord" target="_blank">
+          <CircleButton>
             <DiscordIcon class="w-9 text-secondary"/>
-          </a>
+          </CircleButton>
+        </a>
+        <a :href="config.telegram" target="_blank">
+          <CircleButton>
+            <Telegram class="w-7 mr-1 mt-[2px] text-secondary"/>
+          </CircleButton>
+        </a>
+        <a :href="config.vk" target="_blank">
+          <CircleButton>
+            <Vk class="w-8 text-secondary"/>
+          </CircleButton>
+        </a>
+        <a :href="config.boosty" target="_blank">
+          <CircleButton>
+            <Boosty class="w-8 mb-[2px] ml-[2px] text-secondary"/>
+          </CircleButton>
+        </a>
+        <a :href="config.db" target="_blank">
+          <CircleButton>
+            <DiscordIcon class="w-9 text-secondary"/>
+          </CircleButton>
+        </a>
+        <CircleButton @click="openMo2">
+          <DiscordIcon class="w-9 text-secondary"/>
+        </CircleButton>
+        <CircleButton @click="openExplorer">
+          <FolderSmallStroke class="w-8 h-8 text-secondary"/>
         </CircleButton>
       </div>
       <div class="horizontal-divider">
@@ -161,6 +207,16 @@ const processButtonClick = async () => {
         <h1 class="text-5xl text-gradient font-semibold">RFAD SE 6.0</h1>
         <div class="flex flex-col gap-4 relative">
           <transition-group name="fade" tag="div" class="relative flex flex-col gap-4">
+            <UpdateConfirmationMessage v-if="showConfirmation" class="w-full">
+              <div class="flex flex-row justify-between w-full mt-2.5">
+                <div class="font-bold hover:opacity-80 transition-opacity cursor-pointer" @click="update()">
+                  Продолжить
+                </div>
+                <div class="font-bold text-secondary hover:opacity-80 transition-opacity cursor-pointer" @click="showConfirmation = false">
+                  Отменить
+                </div>
+              </div>
+            </UpdateConfirmationMessage>
             <DirErrorMessage v-if="dirError" class="w-full"/>
             <UpdatingMessage :percentage="updatePercentage" v-if="updateStarted" class="w-full"/>
             <UnpackingMessage :percentage="updateUnpackPercentage" v-if="updateUnpackStarted" class="w-full"/>
@@ -178,24 +234,14 @@ const processButtonClick = async () => {
             >
               {{ firstStart ? 'Обновить' : 'Играть' }}
             </Button>
-            <DropdownButton :same-padding="true" class="font-bold text-4xl text-primary">
+            <DropdownButton
+              :same-padding="true"
+              class="font-bold text-4xl text-primary"
+              @update="update(false)"
+              @open-mo2="openMo2"
+              @open-explorer="openExplorer"
+            >
               <Cog class="w-11 text-primary"/>
-              <template #dropdown>
-                <div class="flex flex-col px-4 py-1.5 gap-1.5 min-w-max font-semibold text-base">
-                  <div class="flex flex-row gap-2 items-center cursor-pointer hover:opacity-75 transition-opacity">
-                    <Download class="w-4 h-4"/>
-                    Обновить игру
-                  </div>
-                  <div class="flex flex-row gap-2 items-center cursor-pointer hover:opacity-75 transition-opacity">
-                    <Package class="w-4 h-4"/>
-                    Открыть МО2
-                  </div>
-                  <div class="flex flex-row gap-2 items-center cursor-pointer hover:opacity-75 transition-opacity">
-                    <Folder class="w-4 h-4"/>
-                    Открыть папку
-                  </div>
-                </div>
-              </template>
             </DropdownButton>
           </div>
           <div class="flex flex-col w-full">

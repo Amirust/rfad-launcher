@@ -2,7 +2,7 @@ mod gdrive;
 mod events;
 
 use tauri::{AppHandle, Emitter, Manager};
-use std::env;
+use std::{env, fs};
 use std::fs::{File, OpenOptions};
 use std::io::{Error, Read, Seek, SeekFrom, Write};
 use std::path::PathBuf;
@@ -29,11 +29,11 @@ async fn unpack(mut archive: ZipArchive<File>, output: String, app: &AppHandle) 
         let outpath = PathBuf::from(output.clone()).join(file.enclosed_name().unwrap());
 
         if file.is_dir() {
-            std::fs::create_dir_all(&outpath).unwrap();
+            fs::create_dir_all(&outpath).unwrap();
         } else {
             if let Some(p) = outpath.parent() {
                 if !p.exists() {
-                    std::fs::create_dir_all(p).unwrap();
+                    fs::create_dir_all(p).unwrap();
                 }
             }
             let mut outfile = File::create(&outpath).unwrap();
@@ -132,7 +132,7 @@ fn get_local_version() -> String {
         return "NO_PATCH".to_string();
     }
 
-    std::fs::read_to_string(version_file_path).unwrap()
+    fs::read_to_string(version_file_path).unwrap()
 }
 
 #[tauri::command]
@@ -156,9 +156,9 @@ async fn get_remote_version(app: AppHandle) -> String {
           Err(_) => return "NO_DIR".to_string()
        }
 
-        let version = std::fs::read_to_string(&remote_version_file_path).unwrap();
+        let version = fs::read_to_string(&remote_version_file_path).unwrap();
 
-        std::fs::remove_file(remote_version_file_path).unwrap();
+        fs::remove_file(remote_version_file_path).unwrap();
         version
     } else {
         "NO_PATCH".to_string()
@@ -190,13 +190,13 @@ async fn update(app: AppHandle) -> bool {
     }).ok();
 
     let patch_dir = format!("{}/mods/RFAD_PATCH", BASE_DIR);
-    if std::fs::exists(&patch_dir).unwrap() {
-        std::fs::remove_dir_all(&patch_dir).unwrap();
+    if fs::exists(&patch_dir).unwrap() {
+        fs::remove_dir_all(&patch_dir).unwrap();
     } else {
-        std::fs::create_dir_all(&patch_dir).unwrap();
+        fs::create_dir_all(&patch_dir).unwrap();
     }
 
-    let zip_file = File::open(zip_path).unwrap();
+    let zip_file = File::open(&zip_path).unwrap();
     let archive = ZipArchive::new(zip_file).unwrap();
 
     app.emit("update:progress", UpdateProgress {
@@ -235,23 +235,41 @@ async fn update(app: AppHandle) -> bool {
         status: UpdateStatus::LoadOrderUpdateFinished as u8
     }).ok();
 
+    fs::remove_file(zip_path).unwrap();
+
     true
 }
 
 #[tauri::command]
 fn start_game() {
-    let _ = std::process::Command::new("D:\\RfaD SE\\MO2\\ModOrganizer.exe")
-        .current_dir("D:\\RfaD SE\\MO2")
+    let _ = std::process::Command::new(format!("{}/ModOrganizer.exe", BASE_DIR))
+        .current_dir(&BASE_DIR)
         .arg("moshortcut://:SKSE")
         .spawn()
         .expect("Failed to start game");
+}
+
+#[tauri::command]
+fn open_explorer() {
+    let _ = std::process::Command::new("explorer")
+        .arg(fs::canonicalize(PathBuf::from(format!("{}\\..", BASE_DIR))).unwrap())
+        .spawn()
+        .expect("Failed to open explorer");
+}
+
+#[tauri::command]
+fn open_mo2() {
+    let _ = std::process::Command::new(format!("{}/ModOrganizer.exe", BASE_DIR))
+        .current_dir(&BASE_DIR)
+        .spawn()
+        .expect("Failed to start MO2");
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![download, get_local_version, get_remote_version, update, start_game])
+        .invoke_handler(tauri::generate_handler![download, get_local_version, get_remote_version, update, start_game, open_explorer, open_mo2])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

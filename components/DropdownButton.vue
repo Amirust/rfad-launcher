@@ -1,11 +1,28 @@
 <script setup lang="ts">
+import Package from '~/components/icons/Package.vue';
+import Download from '~/components/icons/Download.vue';
+import Folder from '~/components/icons/Folder.vue';
+
+interface Events {
+  (e: 'update'): void,
+  (e: 'openMo2'): void,
+  (e: 'openExplorer'): void
+}
+
 const props = defineProps<{
   samePadding?: boolean
 }>();
 
+const emit = defineEmits<Events>();
+
 const samePadding = props.samePadding ?? false;
 
 const isDropdownOpen = ref(false);
+
+const processClick = (e: 'update' | 'openMo2' | 'openExplorer') => {
+  emit(e as any);
+  isDropdownOpen.value = false;
+}
 </script>
 
 <template>
@@ -23,7 +40,29 @@ const isDropdownOpen = ref(false);
 
     <transition name="fade-align">
       <div v-if="isDropdownOpen" class="bg-blockTransparent border-blockBorder border-1 rounded-md w-fit flex items-center justify-center backdrop-blur-sm cursor-pointer absolute bottom-24 right-0">
-        <slot name="dropdown" />
+        <div class="flex flex-col px-4 py-1.5 gap-1.5 min-w-max font-semibold text-base">
+          <div
+            class="flex flex-row gap-2 items-center cursor-pointer hover:opacity-75 transition-opacity"
+            @click="processClick('update')"
+          >
+            <Download class="w-4 h-4"/>
+            Обновить игру
+          </div>
+          <div
+            class="flex flex-row gap-2 items-center cursor-pointer hover:opacity-75 transition-opacity"
+            @click="processClick('openMo2')"
+          >
+            <Package class="w-4 h-4"/>
+            Открыть МО2
+          </div>
+          <div
+            class="flex flex-row gap-2 items-center cursor-pointer hover:opacity-75 transition-opacity"
+            @click="processClick('openExplorer')"
+          >
+            <Folder class="w-4 h-4"/>
+            Открыть папку
+          </div>
+        </div>
       </div>
     </transition>
   </div>
