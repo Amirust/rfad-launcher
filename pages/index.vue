@@ -101,15 +101,11 @@ const update = async (isFirstStart: boolean = false) => {
       unlistenUnpack()
     }
 
-    if (data.payload.status === UpdateStatus.LoadOrderUpdateStarted) {
+    if (data.payload.status === UpdateStatus.LoadOrderUpdateStarted)
       additionalProgress.value += 1
-      console.log('LoadOrderUpdateStarted')
-    }
 
-    if (data.payload.status === UpdateStatus.LoadOrderUpdateFinished) {
+    if (data.payload.status === UpdateStatus.LoadOrderUpdateFinished)
       additionalProgress.value += 1
-      console.log('LoadOrderUpdateFinished')
-    }
   })
 
   await invoke('update')

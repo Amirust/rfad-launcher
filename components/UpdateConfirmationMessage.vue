@@ -8,7 +8,7 @@ import MessageBox from '~/components/base/MessageBox.vue';
       <div class="font-bold">
         ВНИМАНИЕ!
       </div>
-      <div class="font-normal">
+      <div class="font-normal mt-1">
         При обновлении, скорее всего, вам придется начать<br>новую игру.
       </div>
       <slot/>
