@@ -1,5 +1,5 @@
 <template>
-  <Html lang="ru-RU" >
+  <Html lang="ru-RU">
     <Head>
       <Meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
     </Head>

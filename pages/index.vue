@@ -11,6 +11,7 @@ import Vk from '~/components/icons/Vk.vue';
 import Boosty from '~/components/icons/Boosty.vue';
 import FolderSmallStroke from '~/components/icons/FolderSmallStroke.vue';
 import UpdateConfirmationMessage from '~/components/UpdateConfirmationMessage.vue';
+import ModComponent from '~/components/ModComponent.vue';
 
 const firstStart = ref(true)
 
@@ -163,7 +164,7 @@ const openMo2 = async () => {
 
 <template>
   <div class="px-10 py-10 flex flex-row w-full h-full min-h-svh relative overflow-hidden">
-    <div class="flex flex-row gap-6 z-40">
+    <div class="flex flex-row gap-6 z-40 w-full">
       <div class="flex flex-col justify-between min-h-full">
         <a :href="config.discord" target="_blank">
           <CircleButton>
@@ -250,6 +251,11 @@ const openMo2 = async () => {
               <span class="text-primary font-semibold tracking-wide">{{ remoteVersion }}</span>
             </div>
           </div>
+        </div>
+      </div>
+      <div class="w-full flex flex-row justify-end">
+        <div class="flex flex-col">
+          <ModComponent/>
         </div>
       </div>
     </div>

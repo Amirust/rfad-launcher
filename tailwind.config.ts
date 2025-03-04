@@ -11,16 +11,13 @@ export default {
   ],
   theme: {
     extend: {
+      spacing: {
+        78: '19.5rem',
+        82: '20.5rem',
+        86: '21.5rem'
+      },
       padding: {
         '18': '72px'
-      },
-      screens: {
-        // => @media (min-width: 1860px) { ... }
-        '3xl': '1860px',
-        // => @media (min-width: 1988px) { ... }
-        '2k': '1988px',
-        // => @media (min-width: 2500px) { ... }
-        '4k': '2500px'
       },
       fontFamily: {
         sans: [ 'Futura', 'sans-serif' ]
