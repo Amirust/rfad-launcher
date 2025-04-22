@@ -20,6 +20,9 @@ const remoteVersion = ref('Загружаем...')
 
 const updateStarted = ref(false)
 
+const hideUpdate = ref(false)
+const isPathExist = ref(true)
+
 const updateDownloadStarted = ref(false)
 const updateDownloadSpeed = ref('0')
 const updateDownloadPercentage = ref(0)
@@ -34,6 +37,7 @@ const updateAvailable = ref(false)
 const additionalProgress = ref(0)
 
 const dirError = ref(false)
+const googleDriveDirError = ref(false)
 const isGameStarting = ref(false)
 
 const updatePercentage = computed(() => {
@@ -46,6 +50,10 @@ const wait = (ms = 1000) => new Promise(resolve => setTimeout(resolve, ms))
 
 onMounted(async () => {
   firstStart.value = !localStorage.getItem('lastUpdate')
+
+  const exist = await invoke<boolean>('is_path_exist')
+  isPathExist.value = exist
+  dirError.value = !exist
 
   invoke<string>('get_local_version').then(res => {
     localVersion.value = res === 'NO_PATCH' ? '0.0' : res
@@ -128,7 +136,7 @@ const update = async (isFirstStart: boolean = false) => {
 
 const listenDownload = async (fileName: string) => {
   return await listen<DownloadProgress>(EventNames.DownloadProgress, (data) => {
-    if (data.payload.fileName !== fileName)
+    if (data.payload.fileName.split('\\').at(-1) !== fileName)
       return;
     updateDownloadSpeed.value = (data.payload.speedBytesPerSec / 1024 / 1024).toFixed(1)
     updateDownloadPercentage.value = data.payload.percentage
@@ -145,11 +153,7 @@ const processButtonClick = async () => {
   if (firstStart.value)
     await update(true)
   else {
-    isGameStarting.value = true
-    await invoke('start_game')
-
-    await wait(30_000)
-    isGameStarting.value = false
+    await startGame()
   }
 }
 
@@ -159,6 +163,13 @@ const openExplorer = async () => {
 
 const openMo2 = async () => {
   await invoke('open_mo2')
+}
+
+const startGame = async () => {
+  isGameStarting.value = true
+  await invoke('start_game')
+  await wait(30_000)
+  isGameStarting.value = false
 }
 </script>
 
@@ -215,10 +226,20 @@ const openMo2 = async () => {
               </div>
             </UpdateConfirmationMessage>
             <DirErrorMessage v-if="dirError" class="w-full"/>
+            <DirErrorMessage v-if="googleDriveDirError" class="w-full"/>
             <UpdatingMessage :percentage="updatePercentage" v-if="updateStarted" class="w-full"/>
             <UnpackingMessage :percentage="updateUnpackPercentage" v-if="updateUnpackStarted" class="w-full"/>
             <DownloadingMessage :speed="updateDownloadSpeed" :percentage="updateDownloadPercentage" v-if="updateDownloadStarted" class="w-full"/>
-            <UpdateAvailableMessage :version="remoteVersion" v-if="updateAvailable && !updateStarted" class="w-full"/>
+            <UpdateAvailableMessage :version="remoteVersion" v-if="updateAvailable && !updateStarted && !hideUpdate" class="w-full">
+              <div class="flex flex-row justify-between w-full mt-2.5">
+                <div class="font-bold hover:opacity-80 transition-opacity cursor-pointer" @click="update()">
+                  Обновить
+                </div>
+                <div class="font-bold text-secondary hover:opacity-80 transition-opacity cursor-pointer" @click="hideUpdate = true">
+                  Скрыть
+                </div>
+              </div>
+            </UpdateAvailableMessage>
           </transition-group>
           <div class="flex flex-row gap-2.5">
             <Button
@@ -229,14 +250,16 @@ const openMo2 = async () => {
                 'cursor-not-allowed text-secondary pointer-events-none': isGameStarting || updateStarted
               }"
             >
-              {{ firstStart ? 'Обновить' : 'Играть' }}
+              {{ firstStart && !hideUpdate ? 'Обновить' : 'Играть' }}
             </Button>
             <DropdownButton
               :same-padding="true"
+              :hide-update="hideUpdate"
               class="font-bold text-4xl text-primary"
               @update="update(false)"
               @open-mo2="openMo2"
               @open-explorer="openExplorer"
+              @start_game="startGame"
             >
               <Cog class="w-11 text-primary"/>
             </DropdownButton>
@@ -255,7 +278,7 @@ const openMo2 = async () => {
       </div>
       <div class="w-full flex flex-row justify-end">
         <div class="flex flex-col">
-          <ModComponent/>
+          <!--          <ModComponent/>-->
         </div>
       </div>
     </div>

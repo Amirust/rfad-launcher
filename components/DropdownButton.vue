@@ -2,15 +2,18 @@
 import Package from '~/components/icons/Package.vue';
 import Download from '~/components/icons/Download.vue';
 import Folder from '~/components/icons/Folder.vue';
+import GamepadIcon from '~/components/icons/Gamepad.vue';
 
 interface Events {
   (e: 'update'): void,
   (e: 'openMo2'): void,
   (e: 'openExplorer'): void
+  (e: 'start_game'): void
 }
 
 const props = defineProps<{
   samePadding?: boolean
+  hideUpdate?: boolean
 }>();
 
 const emit = defineEmits<Events>();
@@ -18,8 +21,13 @@ const emit = defineEmits<Events>();
 const samePadding = props.samePadding ?? false;
 
 const isDropdownOpen = ref(false);
+const firstStart = ref(true)
 
-const processClick = (e: 'update' | 'openMo2' | 'openExplorer') => {
+onMounted(() => {
+  firstStart.value = !localStorage.getItem('lastUpdate')
+})
+
+const processClick = (e: 'update' | 'openMo2' | 'openExplorer' | 'start_game') => {
   emit(e as any);
   isDropdownOpen.value = false;
 }
@@ -42,11 +50,20 @@ const processClick = (e: 'update' | 'openMo2' | 'openExplorer') => {
       <div v-if="isDropdownOpen" class="bg-blockTransparent border-blockBorder border-1 rounded-md w-fit flex items-center justify-center backdrop-blur-sm cursor-pointer absolute bottom-24 right-0">
         <div class="flex flex-col px-4 py-1.5 gap-1.5 min-w-max font-semibold text-base">
           <div
+            v-if="!firstStart || hideUpdate"
             class="flex flex-row gap-2 items-center cursor-pointer hover:opacity-75 transition-opacity"
             @click="processClick('update')"
           >
             <Download class="w-4 h-4"/>
             Обновить игру
+          </div>
+          <div
+            v-else-if="firstStart && !hideUpdate"
+            class="flex flex-row gap-2 items-center cursor-pointer hover:opacity-75 transition-opacity"
+            @click="processClick('start_game')"
+          >
+            <GamepadIcon class="w-4 h-4"/>
+            Запустить игру
           </div>
           <div
             class="flex flex-row gap-2 items-center cursor-pointer hover:opacity-75 transition-opacity"

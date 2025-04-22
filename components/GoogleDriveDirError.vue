@@ -1,23 +1,16 @@
 <script setup lang="ts">
 import MessageBox from '~/components/base/MessageBox.vue';
-
-const props = defineProps<{
-  version: string
-}>();
 </script>
 
 <template>
   <MessageBox>
     <div class="flex flex-col w-full justify-between text-primary font-semibold text-sm tracking-wide">
-      <div class="flex flex-row w-full justify-between items-center">
-        <div>
-          Доступно обновление!
-        </div>
-        <div>
-          {{ props.version }}
-        </div>
+      <div>
+        ОШИБКА!
       </div>
-      <slot/>
+      <div class="font-normal">
+        Лаунчер не смог найти папку для обновления. Свяжитесь с разработчиками.
+      </div>
     </div>
   </MessageBox>
 </template>
