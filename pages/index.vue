@@ -1,17 +1,20 @@
 <script setup lang="ts">
 
-import DiscordIcon from '~/components/icons/Discord.vue';
-import Cog from '~/components/icons/Cog.vue';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { type DownloadProgress, EventNames, type UnpackProgress, type UpdateProgress, UpdateStatus } from '~/types/types';
 import config from '~/config';
+
+import DiscordIcon from '~/components/icons/Discord.vue';
+import Cog from '~/components/icons/Cog.vue';
 import Telegram from '~/components/icons/Telegram.vue';
 import Vk from '~/components/icons/Vk.vue';
 import Boosty from '~/components/icons/Boosty.vue';
 import FolderSmallStroke from '~/components/icons/FolderSmallStroke.vue';
 import UpdateConfirmationMessage from '~/components/UpdateConfirmationMessage.vue';
-import ModComponent from '~/components/ModComponent.vue';
+import OpenBook from '~/components/icons/OpenBook.vue';
+import MO2 from '~/components/icons/MO2.vue';
+import ModComponent, { type ModComponentProps } from '~/components/ModComponent.vue';
 
 const firstStart = ref(true)
 
@@ -40,6 +43,33 @@ const dirError = ref(false)
 const googleDriveDirError = ref(false)
 const isGameStarting = ref(false)
 
+const modsScrollableToDown = ref(true);
+const modsScrollableToTop = ref(false);
+
+const mods = ref<ModComponentProps[]>([])
+
+const observeScrollability = (id: string) => {
+  const element = document.getElementById(id);
+  if (!element) return;
+
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.target === element.firstElementChild)
+        modsScrollableToTop.value = !entry.isIntersecting;
+
+      if (entry.target === element.lastElementChild)
+        modsScrollableToDown.value = !entry.isIntersecting;
+
+    });
+  }, { root: element, threshold: 0.9 });
+
+  if (element.firstElementChild)
+    observer.observe(element.firstElementChild);
+
+  if (element.lastElementChild)
+    observer.observe(element.lastElementChild);
+};
+
 const updatePercentage = computed(() => {
   return (+(+updateDownloadPercentage.value.toFixed(0) / 2).toFixed(0)) + (+(+updateUnpackPercentage.value.toFixed(0) / 2.1).toFixed(0)) + additionalProgress.value
 })
@@ -67,6 +97,13 @@ onMounted(async () => {
     remoteVersion.value = res === 'NO_PATCH' ? '0.0' : res
 
     updateAvailable.value = remoteVersion.value !== localVersion.value
+  })
+
+  invoke<string>('load_json_mods').then(async res => {
+    mods.value = JSON.parse(res) as ModComponentProps[]
+
+    await wait(50)
+    observeScrollability('mods')
   })
 })
 
@@ -199,11 +236,11 @@ const startGame = async () => {
         </a>
         <a :href="config.db" target="_blank">
           <CircleButton>
-            <DiscordIcon class="w-9 text-secondary"/>
+            <OpenBook class="w-8 text-secondary"/>
           </CircleButton>
         </a>
         <CircleButton @click="openMo2">
-          <DiscordIcon class="w-9 text-secondary"/>
+          <MO2 class="w-10 ml-[1px] text-secondary"/>
         </CircleButton>
         <CircleButton @click="openExplorer">
           <FolderSmallStroke class="w-8 h-8 text-secondary"/>
@@ -244,7 +281,7 @@ const startGame = async () => {
           <div class="flex flex-row gap-2.5">
             <Button
               @click="processButtonClick"
-              class="font-bold text-4xl text-primary tracking-wider uppercase min-w-72"
+              class="font-bold text-4xl text-primary tracking-wider uppercase min-w-73"
               :class="{
                 'cursor-pointer': !isGameStarting && !updateStarted,
                 'cursor-not-allowed text-secondary pointer-events-none': isGameStarting || updateStarted
@@ -277,19 +314,40 @@ const startGame = async () => {
         </div>
       </div>
       <div class="w-full flex flex-row justify-end">
-        <div class="flex flex-col">
-          <!--          <ModComponent/>-->
+        <div
+          id="mods"
+          :class="{
+            'fade-bought': modsScrollableToTop && modsScrollableToDown,
+            'fade-top': modsScrollableToTop && !modsScrollableToDown,
+            'fade-down': modsScrollableToDown && !modsScrollableToTop,
+          }"
+          class="flex flex-col gap-4 text-primary max-h-[88vh] overflow-auto scrollbar-hide"
+        >
+          <transition-group name="fade">
+            <ModComponent
+              v-for="mod in mods"
+              :key="mod.name"
+              :name="mod.name"
+              :description="mod.description"
+              :image="mod.image"
+              :date="mod.date"
+              :author="mod.author"
+              :url="mod.url"
+            />
+          </transition-group>
         </div>
       </div>
     </div>
-    <img alt="centurion" src="assets/image/centurion.webp" class="centurion z-10"/>
+    <img alt="Matrona" src="assets/image/Matrona.webp" class="matrona z-10"/>
   </div>
 </template>
 
 <style lang="scss">
+@use 'assets/css/global' as *;
+
 .horizontal-divider {
   background-image: radial-gradient(circle, theme('colors.secondaryDarker'), #000000);
-  width: 1px;
+  width: 1.5px;
   @apply h-full
 }
 
@@ -301,13 +359,25 @@ const startGame = async () => {
   text-shadow: 0 0 2px rgba(255, 234, 191, 0.5);
 }
 
-
-.centurion {
+.matrona {
   opacity: 50%;
   position: absolute;
-  bottom: -30px;
-  left: 20px;
+  bottom: 0;
+  left: 120px;
   width: 620px;
   height: 620px;
+}
+
+.fade-down {
+  @include mask-image(0deg, 0rem, 3rem);
+}
+
+.fade-top {
+  @include mask-image(180deg, 0rem, 3rem);
+}
+
+.fade-bought {
+  mask-composite: intersect;
+  mask-image: linear-gradient(0deg, transparent 0%, transparent 0rem, black 3rem), linear-gradient(180deg, transparent 0%, transparent 0rem, black 3rem);
 }
 </style>

@@ -12,6 +12,7 @@ export default {
   theme: {
     extend: {
       spacing: {
+        73: '18.25rem',
         78: '19.5rem',
         82: '20.5rem',
         86: '21.5rem'

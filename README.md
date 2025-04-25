@@ -1,75 +1,13 @@
-# Nuxt Minimal Starter
+# RFAD Launcher
+#### By Amirust
 
-Look at the [Nuxt documentation](https://nuxt.com/docs/getting-started/introduction) to learn more.
+### Что это?
+Это реворк лаунчера для скайрим сборки Requiem For A Dream, сделанный на Tauri.<br>
+Этот реворк был сделан из-за того что лаунчер, который был сделан на питоне, имел посредственный дизайн (по моим меркам), и жрал по 300 МБайт озу в простое.<br>
+По этому я решил переписать его на раст и таури
 
-## Setup
+### Билд
 
-Make sure to install dependencies:
-
-```bash
-# npm
-npm install
-
-# pnpm
-pnpm install
-
-# yarn
-yarn install
-
-# bun
-bun install
-```
-
-## Development Server
-
-Start the development server on `http://localhost:3000`:
-
-```bash
-# npm
-npm run dev
-
-# pnpm
-pnpm dev
-
-# yarn
-yarn dev
-
-# bun
-bun run dev
-```
-
-## Production
-
-Build the application for production:
-
-```bash
-# npm
-npm run build
-
-# pnpm
-pnpm build
-
-# yarn
-yarn build
-
-# bun
-bun run build
-```
-
-Locally preview production build:
-
-```bash
-# npm
-npm run preview
-
-# pnpm
-pnpm preview
-
-# yarn
-yarn preview
-
-# bun
-bun run preview
-```
-
-Check out the [deployment documentation](https://nuxt.com/docs/getting-started/deployment) for more information.
+Чтоб собрать сие творение вам нужен Rust, Cargo и Node.js (желательно последней версии).<br>
+Для сборки вам нужно написать `cargo tauri build` в консоль <br>
+Собранный екзешник будет в папке `target/release/rfad-launcher.exe`<br>
