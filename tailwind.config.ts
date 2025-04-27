@@ -21,7 +21,8 @@ export default {
         '18': '72px'
       },
       fontFamily: {
-        sans: [ 'Futura', 'sans-serif' ]
+        sans: [ 'Futura', 'sans-serif' ],
+        hubot: [ 'Hubot', 'sans-serif' ]
       },
       colors: {
         primary: '#FFEABF',

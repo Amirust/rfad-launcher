@@ -14,7 +14,7 @@ import FolderSmallStroke from '~/components/icons/FolderSmallStroke.vue';
 import UpdateConfirmationMessage from '~/components/UpdateConfirmationMessage.vue';
 import OpenBook from '~/components/icons/OpenBook.vue';
 import MO2 from '~/components/icons/MO2.vue';
-import ModComponent, { type ModComponentProps } from '~/components/ModComponent.vue';
+import type { PatchComponentProps } from '~/components/PatchComponent.vue';
 
 const firstStart = ref(true)
 
@@ -46,7 +46,7 @@ const isGameStarting = ref(false)
 const modsScrollableToDown = ref(true);
 const modsScrollableToTop = ref(false);
 
-const mods = ref<ModComponentProps[]>([])
+const patches = ref<PatchComponentProps[]>([])
 
 const observeScrollability = (id: string) => {
   const element = document.getElementById(id);
@@ -99,11 +99,11 @@ onMounted(async () => {
     updateAvailable.value = remoteVersion.value !== localVersion.value
   })
 
-  invoke<string>('load_json_mods').then(async res => {
-    mods.value = JSON.parse(res) as ModComponentProps[]
+  invoke<string>('load_json_patches').then(async res => {
+    patches.value = JSON.parse(res) as PatchComponentProps[]
 
     await wait(50)
-    observeScrollability('mods')
+    observeScrollability('patches')
   })
 })
 
@@ -315,7 +315,7 @@ const startGame = async () => {
       </div>
       <div class="w-full flex flex-row justify-end">
         <div
-          id="mods"
+          id="patches"
           :class="{
             'fade-bought': modsScrollableToTop && modsScrollableToDown,
             'fade-top': modsScrollableToTop && !modsScrollableToDown,
@@ -324,15 +324,26 @@ const startGame = async () => {
           class="flex flex-col gap-4 text-primary max-h-[88vh] overflow-auto scrollbar-hide"
         >
           <transition-group name="fade">
-            <ModComponent
-              v-for="mod in mods"
-              :key="mod.name"
-              :name="mod.name"
-              :description="mod.description"
-              :image="mod.image"
-              :date="mod.date"
-              :author="mod.author"
-              :url="mod.url"
+            <!--            <ModComponent-->
+            <!--              v-for="mod in mods"-->
+            <!--              :key="mod.name"-->
+            <!--              :name="mod.name"-->
+            <!--              :description="mod.description"-->
+            <!--              :image="mod.image"-->
+            <!--              :date="mod.date"-->
+            <!--              :author="mod.author"-->
+            <!--              :url="mod.url"-->
+            <!--            />-->
+
+            <PatchComponent
+              v-for="patch in patches"
+              :key="patch.version"
+              :version="patch.version"
+              :date="patch.date"
+              :author="patch.author"
+              :name="patch.name"
+              :description="patch.description"
+              :url="patch.url"
             />
           </transition-group>
         </div>

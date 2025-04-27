@@ -21,6 +21,7 @@ const LOCAL_VERSION_FILE_NAME: &str = "version.txt";
 const REMOTE_VERSION_FILE_NAME: &str = "remote_version.txt";
 const LOCAL_UPDATE_FILE_NAME: &str = "update.zip";
 const MODS_JSON_FILE_NAME: &str = "launcher-mods.json";
+const PATCHES_JSON_FILE_NAME: &str = "launcher-patches.json";
 
 fn exe_dir() -> PathBuf {
     env::current_exe()
@@ -266,13 +267,31 @@ fn open_mo2() {
         .expect("Failed to start MO2");
 }
 
+// #[tauri::command]
+// async fn load_json_mods(app: AppHandle) -> String {
+//     let drive = gdrive::GoogleDriveClient::new().await;
+//     let files = drive.list_files(FOLDER_ID).await;
+//
+//     if let Some((id, _, _)) = files.iter().find(|(_, name, _)| name == MODS_JSON_FILE_NAME) {
+//         let tmp = base_dir().join(MODS_JSON_FILE_NAME);
+//         drive.download_file(id, MimeType::Json, tmp.to_str().unwrap(), app.clone())
+//             .await
+//             .ok();
+//         let json = fs::read_to_string(&tmp).unwrap_or_else(|_| "[]".into());
+//         let _ = fs::remove_file(&tmp);
+//         json
+//     } else {
+//         "[]".into()
+//     }
+// }
+
 #[tauri::command]
-async fn load_json_mods(app: AppHandle) -> String {
+async fn load_json_patches(app: AppHandle) -> String {
     let drive = gdrive::GoogleDriveClient::new().await;
     let files = drive.list_files(FOLDER_ID).await;
 
-    if let Some((id, _, _)) = files.iter().find(|(_, name, _)| name == MODS_JSON_FILE_NAME) {
-        let tmp = base_dir().join(MODS_JSON_FILE_NAME);
+    if let Some((id, _, _)) = files.iter().find(|(_, name, _)| name == PATCHES_JSON_FILE_NAME) {
+        let tmp = base_dir().join(PATCHES_JSON_FILE_NAME);
         drive.download_file(id, MimeType::Json, tmp.to_str().unwrap(), app.clone())
             .await
             .ok();
@@ -282,7 +301,6 @@ async fn load_json_mods(app: AppHandle) -> String {
     } else {
         "[]".into()
     }
-
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -292,7 +310,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             download, get_local_version, get_remote_version,
             update, start_game, open_explorer,
-            open_mo2, is_path_exist, load_json_mods
+            open_mo2, is_path_exist, load_json_patches
     ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
