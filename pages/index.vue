@@ -2,6 +2,7 @@
 
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import { type DownloadProgress, EventNames, type UnpackProgress, type UpdateProgress, UpdateStatus } from '~/types/types';
 import config from '~/config';
 
@@ -15,6 +16,8 @@ import UpdateConfirmationMessage from '~/components/UpdateConfirmationMessage.vu
 import OpenBook from '~/components/icons/OpenBook.vue';
 import MO2 from '~/components/icons/MO2.vue';
 import type { PatchComponentProps } from '~/components/PatchComponent.vue';
+import Minus from '~/components/icons/Minus.vue';
+import Expand from '~/components/icons/Expand.vue';
 
 const firstStart = ref(true)
 
@@ -79,6 +82,17 @@ const showConfirmation = ref(false)
 const wait = (ms = 1000) => new Promise(resolve => setTimeout(resolve, ms))
 
 onMounted(async () => {
+  const appWindow = getCurrentWindow();
+
+  document
+    .getElementById('titlebar-minimize')
+    ?.addEventListener('click', () => appWindow.minimize());
+  document
+    .getElementById('titlebar-close')
+    ?.addEventListener('click', () =>
+      appWindow.close()
+    );
+
   firstStart.value = !localStorage.getItem('lastUpdate')
 
   const exist = await invoke<boolean>('is_path_exist')
@@ -208,9 +222,22 @@ const startGame = async () => {
   await wait(30_000)
   isGameStarting.value = false
 }
+
+
 </script>
 
 <template>
+  <div data-tauri-drag-region class="titlebar z-[100000]">
+    <div class="titlebar-button" id="titlebar-minimize">
+      <Minus class="text-primary w-5"/>
+    </div>
+    <div class="titlebar-button opacity-70 pointer-events-none cursor-not-allowed" id="titlebar-maximize">
+      <Expand class="text-primary w-4"/>
+    </div>
+    <div class="titlebar-button" id="titlebar-close">
+      <IconsX class="text-primary w-5"/>
+    </div>
+  </div>
   <div class="px-10 py-10 flex flex-row w-full h-full min-h-svh relative overflow-hidden">
     <div class="flex flex-row gap-6 z-40 w-full">
       <div class="flex flex-col justify-between min-h-full">

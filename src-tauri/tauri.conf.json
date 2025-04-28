@@ -15,7 +15,8 @@
         "title": "RFAD Launcher",
         "width": 1100,
         "height": 675,
-        "resizable": false
+        "resizable": false,
+        "decorations": false
       }
     ],
     "security": {
