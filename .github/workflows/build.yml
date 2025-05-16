@@ -16,18 +16,18 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
         with:
-          node-version: lts/*
+          bun-version: stable
 
       - name: Install Rust (stable)
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ""
 
-      - name: Install frontend dependencies
-        run: yarn install
+      - name: Install frontend dependencies with Bun
+        run: bun install
 
       - name: Build & create GitHub Release
         uses: tauri-apps/tauri-action@v0
