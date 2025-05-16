@@ -1,0 +1,44 @@
+name: "publish"
+
+on:
+  push:
+    branches:
+      - release
+
+jobs:
+  publish-tauri-windows:
+    name: Build & Release Windows
+    runs-on: windows-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ""
+
+      - name: Install frontend dependencies
+        run: yarn install
+
+      - name: Build & create GitHub Release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        with:
+          tagName: RFAD-Launcher-v__VERSION__
+          releaseName: "RFAD Launcher v__VERSION__"
+          releaseBody: |
+            ❗ Скачать готовый файл можно в списке ассетов этого релиза.
+          releaseDraft: false
+          prerelease: false
+          args: ""

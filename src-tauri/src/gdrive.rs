@@ -1,20 +1,23 @@
-#[path="./events.rs"]
+#[path = "./events.rs"]
 mod events;
 
 pub use events::DownloadProgress;
 
-use std::io;
-use google_drive3::{yup_oauth2, yup_oauth2::ServiceAccountKey, DriveHub, hyper_rustls::HttpsConnector, hyper_util::client::legacy::connect::HttpConnector};
-use hyper::body::{Body};
-use tauri::AppHandle;
-use tauri::utils::mime_type::MimeType;
-use tauri::{Emitter};
-use http_body_util::{BodyStream};
-use tokio::io::AsyncWriteExt;
-use futures::prelude::*;
-use tokio::io::AsyncReadExt;
 use futures::pin_mut;
+use futures::prelude::*;
 use google_drive3::common::to_bytes;
+use google_drive3::{
+    hyper_rustls::HttpsConnector, hyper_util::client::legacy::connect::HttpConnector, yup_oauth2,
+    yup_oauth2::ServiceAccountKey, DriveHub,
+};
+use http_body_util::BodyStream;
+use hyper::body::Body;
+use std::io;
+use tauri::utils::mime_type::MimeType;
+use tauri::AppHandle;
+use tauri::Emitter;
+use tokio::io::AsyncReadExt;
+use tokio::io::AsyncWriteExt;
 
 const SCOPE: &str = "https://www.googleapis.com/auth/drive";
 
@@ -39,21 +42,21 @@ impl GoogleDriveClient {
             client_x509_cert_url: Some("https://www.googleapis.com/robot/v1/metadata/x509/bookingtest%40kiberone-422110.iam.gserviceaccount.com".to_string()),
         };
 
-        let auth = yup_oauth2::ServiceAccountAuthenticator::builder(
-            service_account,
-        ).build().await.unwrap();
+        let auth = yup_oauth2::ServiceAccountAuthenticator::builder(service_account)
+            .build()
+            .await
+            .unwrap();
 
-        let client = hyper_util::client::legacy::Client::builder(
-            hyper_util::rt::TokioExecutor::new()
-        )
-            .build(
-                hyper_rustls::HttpsConnectorBuilder::new()
-                    .with_native_roots()
-                    .unwrap()
-                    .https_or_http()
-                    .enable_http1()
-                    .build()
-            );
+        let client =
+            hyper_util::client::legacy::Client::builder(hyper_util::rt::TokioExecutor::new())
+                .build(
+                    hyper_rustls::HttpsConnectorBuilder::new()
+                        .with_native_roots()
+                        .unwrap()
+                        .https_or_http()
+                        .enable_http1()
+                        .build(),
+                );
 
         Self {
             hub: DriveHub::new(client, auth),
@@ -75,7 +78,13 @@ impl GoogleDriveClient {
                 if let Some(files) = file_list.files {
                     files
                         .into_iter()
-                        .map(|file| (file.id.unwrap_or_default(), file.name.unwrap_or_default(), file.mime_type.unwrap_or_default()))
+                        .map(|file| {
+                            (
+                                file.id.unwrap_or_default(),
+                                file.name.unwrap_or_default(),
+                                file.mime_type.unwrap_or_default(),
+                            )
+                        })
                         .collect()
                 } else {
                     vec![]
@@ -88,19 +97,27 @@ impl GoogleDriveClient {
         }
     }
 
-    pub async fn download_file(&self, file_id: &str, mime_type: MimeType, output_path: &str, app: AppHandle) -> Result<(), String> {
+    pub async fn download_file(
+        &self,
+        file_id: &str,
+        mime_type: MimeType,
+        output_path: &str,
+        app: AppHandle,
+    ) -> Result<(), String> {
         let response = match mime_type {
-            MimeType::Txt => {
-                self.hub.files()
-                    .export(file_id, "text/plain")
-                    .param("alt", "media")
-                    .add_scope(SCOPE)
-                    .doit()
-                    .await
-                    .expect("Error downloading file")
-            }
+            MimeType::Txt => self
+                .hub
+                .files()
+                .export(file_id, "text/plain")
+                .param("alt", "media")
+                .add_scope(SCOPE)
+                .doit()
+                .await
+                .expect("Error downloading file"),
             _ => {
-                let (resp, _) = self.hub.files()
+                let (resp, _) = self
+                    .hub
+                    .files()
                     .get(file_id)
                     .param("alt", "media")
                     .add_scope(SCOPE)
@@ -112,7 +129,9 @@ impl GoogleDriveClient {
         };
 
         let total_size = response.size_hint().lower();
-        let mut file = tokio::fs::File::create(output_path).await.map_err(|e| e.to_string())?;
+        let mut file = tokio::fs::File::create(output_path)
+            .await
+            .map_err(|e| e.to_string())?;
         let start_time = std::time::Instant::now();
         let mut downloaded: u64 = 0;
 
@@ -126,24 +145,44 @@ impl GoogleDriveClient {
 
         let mut buffer = vec![0u8; 4 * 1024 * 1024];
         loop {
-            let bytes_read = AsyncReadExt::read(&mut reader, &mut buffer).await.map_err(|e| e.to_string())?;
+            let bytes_read = AsyncReadExt::read(&mut reader, &mut buffer)
+                .await
+                .map_err(|e| e.to_string())?;
             if bytes_read == 0 {
                 break;
             }
 
             downloaded += bytes_read as u64;
-            file.write_all(&buffer[..bytes_read]).await.map_err(|e| e.to_string())?;
+            file.write_all(&buffer[..bytes_read])
+                .await
+                .map_err(|e| e.to_string())?;
 
             let elapsed = start_time.elapsed().as_secs_f64();
-            let speed = if elapsed > 0.0 { (downloaded as f64 / elapsed) as u64 } else { 0 };
-            let percentage = if total_size > 0 { (downloaded as f64 / total_size as f64) * 100.0 } else { 0.0 };
+            let speed = if elapsed > 0.0 {
+                (downloaded as f64 / elapsed) as u64
+            } else {
+                0
+            };
+            let percentage = if total_size > 0 {
+                (downloaded as f64 / total_size as f64) * 100.0
+            } else {
+                0.0
+            };
 
-            app.emit("download:progress", Some(DownloadProgress{
-                download_bytes: downloaded,
-                percentage,
-                speed_bytes_per_sec: speed,
-                file_name: output_path.split("/").last().unwrap_or_default().to_string()
-            })).ok();
+            app.emit(
+                "download:progress",
+                Some(DownloadProgress {
+                    download_bytes: downloaded,
+                    percentage,
+                    speed_bytes_per_sec: speed,
+                    file_name: output_path
+                        .split("/")
+                        .last()
+                        .unwrap_or_default()
+                        .to_string(),
+                }),
+            )
+            .ok();
         }
 
         file.flush().await.map_err(|e| e.to_string())?;
@@ -151,7 +190,9 @@ impl GoogleDriveClient {
     }
 
     pub async fn load_text(&self, file_id: &str) -> Result<String, ()> {
-        let response = self.hub.files()
+        let response = self
+            .hub
+            .files()
             .export(file_id, "text/plain")
             .param("alt", "media")
             .add_scope(SCOPE)
