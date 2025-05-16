@@ -1,20 +1,21 @@
-mod gdrive;
 mod events;
+mod gdrive;
 
-use tauri::{AppHandle, Emitter, Manager};
+use crate::events::{UnpackProgress, UpdateProgress, UpdateStatus};
 use std::{
-    env,
-    fs,
+    env, fs,
     fs::File,
     fs::OpenOptions,
     io::{Error, Read, Seek, SeekFrom, Write},
     path::PathBuf,
     time::Duration,
 };
+use futures::StreamExt;
 use tauri::utils::mime_type::MimeType;
+use tauri::{AppHandle, Emitter, Manager};
+use tokio::io::AsyncWriteExt;
 use tokio::time::sleep;
 use zip::ZipArchive;
-use crate::events::{UnpackProgress, UpdateProgress, UpdateStatus};
 
 const FOLDER_ID: &str = "1JUOctbsugh2IIEUCWcBkupXYVYoJMg4G";
 const LOCAL_VERSION_FILE_NAME: &str = "version.txt";
@@ -23,6 +24,7 @@ const LOCAL_UPDATE_FILE_NAME: &str = "update.zip";
 const MODS_JSON_FILE_NAME: &str = "launcher-mods.json";
 const PATCHES_JSON_FILE_NAME: &str = "launcher-patches.json";
 
+#[tauri::command]
 fn exe_dir() -> PathBuf {
     env::current_exe()
         .expect("failed to get current exe path")
@@ -66,18 +68,24 @@ async fn unpack(mut archive: ZipArchive<File>, output: PathBuf, app: &AppHandle)
         }
 
         let percentage = ((i + 1) as f64 / total_files as f64) * 100.0;
-        app.emit("unpack:progress", UnpackProgress { percentage }).ok();
+        app.emit("unpack:progress", UnpackProgress { percentage })
+            .ok();
     }
 }
 
 async fn new_load_order() -> Result<String, ()> {
     let drive = gdrive::GoogleDriveClient::new().await;
     let files = drive.list_files(FOLDER_ID).await;
-    let (id, _, _) = files.iter()
+    let (id, _, _) = files
+        .iter()
         .find(|(_, name, _)| name == "modlist")
         .ok_or(())?;
     let txt = drive.load_text(id).await.map_err(|_| ())?;
-    if txt.is_empty() { Err(()) } else { Ok(txt) }
+    if txt.is_empty() {
+        Err(())
+    } else {
+        Ok(txt)
+    }
 }
 
 fn remove_whitespace(s: &str) -> String {
@@ -86,7 +94,10 @@ fn remove_whitespace(s: &str) -> String {
 
 fn update_modlist() {
     let path = profile_dir().join("modlist.txt");
-    let mut file = OpenOptions::new().read(true).write(true).open(&path)
+    let mut file = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(&path)
         .expect("cannot open modlist.txt");
 
     let mut content = String::new();
@@ -133,7 +144,9 @@ async fn download(app: AppHandle, id: &str, file_name: &str) -> Result<String, (
         MimeType::OctetStream
     };
     let out_path = exe_dir().join(file_name);
-    let res = drive.download_file(id, mime, out_path.to_str().unwrap(), app).await;
+    let res = drive
+        .download_file(id, mime, out_path.to_str().unwrap(), app)
+        .await;
     Ok(format!("Downloaded: {:?}", res))
 }
 
@@ -154,15 +167,18 @@ async fn get_remote_version(app: AppHandle) -> String {
     let drive = gdrive::GoogleDriveClient::new().await;
     let files = drive.list_files(FOLDER_ID).await;
 
-    app.emit("update:progress", UpdateProgress {
-        status: UpdateStatus::DownloadStarted as u8
-    }).ok();
+    app.emit(
+        "update:progress",
+        UpdateProgress {
+            status: UpdateStatus::DownloadStarted as u8,
+        },
+    )
+    .ok();
 
-    if let Some((id, _, _)) = files.iter()
-        .find(|(_, name, _)| name == "version")
-    {
+    if let Some((id, _, _)) = files.iter().find(|(_, name, _)| name == "version") {
         let tmp = base_dir().join(REMOTE_VERSION_FILE_NAME);
-        drive.download_file(id, MimeType::Txt, tmp.to_str().unwrap(), app.clone())
+        drive
+            .download_file(id, MimeType::Txt, tmp.to_str().unwrap(), app.clone())
             .await
             .ok();
         let ver = fs::read_to_string(&tmp).unwrap_or_else(|_| "NO_PATCH".into());
@@ -177,24 +193,35 @@ async fn get_remote_version(app: AppHandle) -> String {
 async fn update(app: AppHandle) -> bool {
     let drive = gdrive::GoogleDriveClient::new().await;
     let files = drive.list_files(FOLDER_ID).await;
-    let (zip_id, _, _) = files.iter()
+    let (zip_id, _, _) = files
+        .iter()
         .find(|(_, _, mime)| *mime == "application/x-zip-compressed")
         .expect("zip not found");
 
     let zip_path = base_dir().join(LOCAL_UPDATE_FILE_NAME);
-    app.emit("update:progress", UpdateProgress {
-        status: UpdateStatus::DownloadStarted as u8
-    }).ok();
-    let _ = drive.download_file(
-        zip_id,
-        MimeType::OctetStream,
-        zip_path.to_str().unwrap(),
-        app.clone(),
-    ).await;
+    app.emit(
+        "update:progress",
+        UpdateProgress {
+            status: UpdateStatus::DownloadStarted as u8,
+        },
+    )
+    .ok();
+    let _ = drive
+        .download_file(
+            zip_id,
+            MimeType::OctetStream,
+            zip_path.to_str().unwrap(),
+            app.clone(),
+        )
+        .await;
 
-    app.emit("update:progress", UpdateProgress {
-        status: UpdateStatus::DownloadFinished as u8
-    }).ok();
+    app.emit(
+        "update:progress",
+        UpdateProgress {
+            status: UpdateStatus::DownloadFinished as u8,
+        },
+    )
+    .ok();
 
     let patch_dir = base_dir().join("mods").join("RFAD_PATCH");
     if patch_dir.exists() {
@@ -204,18 +231,30 @@ async fn update(app: AppHandle) -> bool {
 
     let zip_file = File::open(&zip_path).unwrap();
     let archive = ZipArchive::new(zip_file).unwrap();
-    app.emit("update:progress", UpdateProgress {
-        status: UpdateStatus::UnpackStarted as u8
-    }).ok();
+    app.emit(
+        "update:progress",
+        UpdateProgress {
+            status: UpdateStatus::UnpackStarted as u8,
+        },
+    )
+    .ok();
     unpack(archive, patch_dir.clone(), &app).await;
-    app.emit("update:progress", UpdateProgress {
-        status: UpdateStatus::UnpackFinished as u8
-    }).ok();
+    app.emit(
+        "update:progress",
+        UpdateProgress {
+            status: UpdateStatus::UnpackFinished as u8,
+        },
+    )
+    .ok();
 
     let new_list = remove_whitespace(&new_load_order().await.unwrap_or_default());
-    app.emit("update:progress", UpdateProgress {
-        status: UpdateStatus::LoadOrderUpdateStarted as u8
-    }).ok();
+    app.emit(
+        "update:progress",
+        UpdateProgress {
+            status: UpdateStatus::LoadOrderUpdateStarted as u8,
+        },
+    )
+    .ok();
 
     update_modlist();
     if !new_list.is_empty() {
@@ -229,9 +268,13 @@ async fn update(app: AppHandle) -> bool {
             .expect("Error updating loadorder.txt");
     }
 
-    app.emit("update:progress", UpdateProgress {
-        status: UpdateStatus::LoadOrderUpdateFinished as u8
-    }).ok();
+    app.emit(
+        "update:progress",
+        UpdateProgress {
+            status: UpdateStatus::LoadOrderUpdateFinished as u8,
+        },
+    )
+    .ok();
 
     let _ = fs::remove_file(&zip_path);
     true
@@ -290,9 +333,13 @@ async fn load_json_patches(app: AppHandle) -> String {
     let drive = gdrive::GoogleDriveClient::new().await;
     let files = drive.list_files(FOLDER_ID).await;
 
-    if let Some((id, _, _)) = files.iter().find(|(_, name, _)| name == PATCHES_JSON_FILE_NAME) {
+    if let Some((id, _, _)) = files
+        .iter()
+        .find(|(_, name, _)| name == PATCHES_JSON_FILE_NAME)
+    {
         let tmp = base_dir().join(PATCHES_JSON_FILE_NAME);
-        drive.download_file(id, MimeType::Json, tmp.to_str().unwrap(), app.clone())
+        drive
+            .download_file(id, MimeType::Json, tmp.to_str().unwrap(), app.clone())
             .await
             .ok();
         let json = fs::read_to_string(&tmp).unwrap_or_else(|_| "[]".into());
@@ -303,15 +350,68 @@ async fn load_json_patches(app: AppHandle) -> String {
     }
 }
 
+#[tauri::command]
+async fn update_launcher(download_link: String) -> Result<String, String> {
+    let response = reqwest::get(&download_link)
+        .await
+        .map_err(|e| format!("Request failed: {}", e))?;
+
+    if !response.status().is_success() {
+        return Err(format!("Server returned error: {}", response.status()));
+    }
+
+    let dest_path = exe_dir().join("new-launcher.exe");
+
+    let mut file = tokio::fs::File::create(&dest_path)
+        .await
+        .map_err(|e| format!("Failed to create file '{:?}': {}", dest_path, e))?;
+
+    let mut stream = response.bytes_stream();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| format!("Error while downloading: {}", e))?;
+        file.write_all(&chunk)
+            .await
+            .map_err(|e| format!("Error writing to file: {}", e))?;
+    }
+
+    Ok("Download complete!".to_string())
+}
+
+#[tauri::command]
+fn start_new_launcher() {
+    let mut command = std::process::Command::new(exe_dir().join("new-launcher.exe"));
+    command.arg("UPDATING");
+    command.spawn().expect("Failed to start new launcher");
+
+    std::process::exit(0);
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
-pub fn run() {
+pub fn run(args: Vec<String>) {
+    if args.len() >= 1 && args[0] == "UPDATING" {
+        let exe_path = exe_dir().join("new-launcher.exe");
+        let new_exe_path = exe_dir().join("rfad-launcher.exe");
+        if exe_path.exists() {
+            fs::rename(exe_path, new_exe_path).expect("Failed to rename file");
+        }
+    }
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
-            download, get_local_version, get_remote_version,
-            update, start_game, open_explorer,
-            open_mo2, is_path_exist, load_json_patches
-    ])
+            download,
+            get_local_version,
+            get_remote_version,
+            update,
+            start_game,
+            open_explorer,
+            open_mo2,
+            is_path_exist,
+            load_json_patches,
+            update_launcher,
+            exe_dir,
+            start_new_launcher
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

@@ -3,6 +3,8 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { getVersion } from '@tauri-apps/api/app';
+
 import { type DownloadProgress, EventNames, type UnpackProgress, type UpdateProgress, UpdateStatus } from '~/types/types';
 import config from '~/config';
 
@@ -23,6 +25,7 @@ const firstStart = ref(true)
 
 const localVersion = ref('Загружаем...')
 const remoteVersion = ref('Загружаем...')
+const launcherVersion = ref('Загружаем...')
 
 const updateStarted = ref(false)
 
@@ -48,6 +51,8 @@ const isGameStarting = ref(false)
 
 const modsScrollableToDown = ref(true);
 const modsScrollableToTop = ref(false);
+
+const launcherUpdate = ref(false)
 
 const patches = ref<PatchComponentProps[]>([])
 
@@ -119,6 +124,8 @@ onMounted(async () => {
     await wait(50)
     observeScrollability('patches')
   })
+
+  await checkUpdates()
 })
 
 const update = async (isFirstStart: boolean = false) => {
@@ -223,10 +230,28 @@ const startGame = async () => {
   isGameStarting.value = false
 }
 
+const checkUpdates = async () => {
+  const req = await fetch('https://raw.githubusercontent.com/Amirust/rfad-launcher/main/versions.json')
+  const { version, downloadUrl } = await req.json() as { version: string, downloadUrl: string }
 
+  const currentVersion = await getVersion()
+  launcherVersion.value = currentVersion
+  if (currentVersion !== version) {
+    launcherUpdate.value = true
+
+    console.log(await invoke('update_launcher', {
+      downloadLink: downloadUrl
+    }))
+
+    await invoke('start_new_launcher')
+  }
+}
 </script>
 
 <template>
+  <div class="absolute bottom-0 right-0 opacity-10 hover:opacity-60 transition-opacity z-[100000]">
+    <span class="text-primary font-semibold tracking-wide">{{ launcherVersion }}</span>
+  </div>
   <div data-tauri-drag-region class="titlebar z-[100000]">
     <div class="titlebar-button" id="titlebar-minimize">
       <Minus class="text-primary w-5"/>
@@ -304,6 +329,7 @@ const startGame = async () => {
                 </div>
               </div>
             </UpdateAvailableMessage>
+            <LauncherUpdatingMessage class="w-full" v-if="launcherUpdate"/>
           </transition-group>
           <div class="flex flex-row gap-2.5">
             <Button
