@@ -26,13 +26,13 @@ const PATCHES_JSON_FILE_NAME: &str = "launcher-patches.json";
 
 #[tauri::command]
 fn exe_dir() -> PathBuf {
-    env::current_exe()
-        .expect("failed to get current exe path")
-        .parent()
-        .expect("failed to get exe parent directory")
-        .to_path_buf()
+    // env::current_exe()
+    //     .expect("failed to get current exe path")
+    //     .parent()
+    //     .expect("failed to get exe parent directory")
+    //     .to_path_buf()
 
-    // return PathBuf::from("D:\\RfaD SE");
+    return PathBuf::from("D:\\RfaD SE");
 }
 
 fn base_dir() -> PathBuf {
@@ -260,7 +260,7 @@ async fn update(app: AppHandle) -> bool {
     if !new_list.is_empty() {
         let plugins_txt = profile_dir().join("plugins.txt");
         let loadorder_txt = profile_dir().join("loadorder.txt");
-        update_order(&plugins_txt, &new_list, "Requiem for the Indifferent.esp")
+        update_order(&plugins_txt, &new_list, "*Requiem for the Indifferent.esp")
             .await
             .expect("Error updating plugins.txt");
         update_order(&loadorder_txt, &new_list, "Requiem for the Indifferent.esp")
