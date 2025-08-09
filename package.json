@@ -1,7 +1,8 @@
 {
-  "name": "nuxt-app",
+  "name": "rfad-launcher",
   "private": true,
   "type": "module",
+  "author": "amirust",
   "scripts": {
     "build": "nuxt build",
     "dev": "nuxt dev",

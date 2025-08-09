@@ -1,6 +1,6 @@
 [package]
 name = "rfad-launcher"
-version = "1.0.1"
+version = "1.0.3"
 description = "RFAD Community Launcher"
 authors = ["amirust"]
 edition = "2021"

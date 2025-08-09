@@ -301,7 +301,7 @@ const checkUpdates = async () => {
       <div class="horizontal-divider">
       </div>
       <div class="flex flex-col justify-between h-full">
-        <h1 class="text-5xl text-gradient font-semibold">RFAD SE 6.0</h1>
+        <h1 class="text-5xl text-gradient font-semibold">RFAD SE 6.1</h1>
         <div class="flex flex-col gap-4 relative">
           <transition-group name="fade" tag="div" class="relative flex flex-col gap-4">
             <UpdateConfirmationMessage v-if="showConfirmation" class="w-full">
