@@ -20,6 +20,7 @@ import MO2 from '~/components/icons/MO2.vue';
 import type { PatchComponentProps } from '~/components/PatchComponent.vue';
 import Minus from '~/components/icons/Minus.vue';
 import Expand from '~/components/icons/Expand.vue';
+import SettingsModal from '~/components/SettingsModal.vue';
 
 const firstStart = ref(true)
 
@@ -56,6 +57,21 @@ const launcherUpdate = ref(false)
 
 const patches = ref<PatchComponentProps[]>([])
 
+const fpsOptions = [ 60, 75, 120, 144, 165 ]
+const selectedFps = ref<number | null>(null)
+const initialFps = ref<number | null>(null)
+const selectedVoice = ref<'ru' | 'en' | null>(null)
+const initialVoice = ref<'ru' | 'en' | null>(null)
+const isSettingsOpen = ref(false)
+const isSavingSettings = ref(false)
+
+const isSettingsDirty = computed(() => {
+  if (selectedFps.value === null || selectedVoice.value === null)
+    return false
+
+  return selectedFps.value !== initialFps.value || selectedVoice.value !== initialVoice.value
+})
+
 const observeScrollability = (id: string) => {
   const element = document.getElementById(id);
   if (!element) return;
@@ -82,6 +98,64 @@ const updatePercentage = computed(() => {
   return (+(+updateDownloadPercentage.value.toFixed(0) / 2).toFixed(0)) + (+(+updateUnpackPercentage.value.toFixed(0) / 2.1).toFixed(0)) + additionalProgress.value
 })
 
+const loadSettings = async () => {
+  if (!isPathExist.value)
+    return
+
+  try {
+    const fps = await invoke<number>('get_framerate_limit')
+    selectedFps.value = fps
+    initialFps.value = fps
+  } catch (e) {
+    console.error('Failed to load framerate limit', e)
+  }
+
+  try {
+    const voice = await invoke<string>('get_voice_locale')
+    const normalized = voice === 'ru' ? 'ru' : 'en'
+    selectedVoice.value = normalized
+    initialVoice.value = normalized
+  } catch (e) {
+    console.error('Failed to load voice locale', e)
+  }
+}
+
+const openSettings = async () => {
+  if (!isPathExist.value) {
+    dirError.value = true
+    return
+  }
+
+  if (selectedFps.value === null || selectedVoice.value === null)
+    await loadSettings()
+
+  isSettingsOpen.value = true
+}
+
+const closeSettings = () => {
+  isSettingsOpen.value = false
+}
+
+const saveSettings = async () => {
+  if (!isSettingsDirty.value || selectedFps.value === null || selectedVoice.value === null)
+    return
+
+  isSavingSettings.value = true
+  try {
+    await invoke('update_game_settings', {
+      framerate: selectedFps.value,
+      voice: selectedVoice.value
+    })
+    initialFps.value = selectedFps.value
+    initialVoice.value = selectedVoice.value
+    isSettingsOpen.value = false
+  } catch (e) {
+    console.error('Failed to update settings', e)
+  } finally {
+    isSavingSettings.value = false
+  }
+}
+
 const showConfirmation = ref(false)
 
 const wait = (ms = 1000) => new Promise(resolve => setTimeout(resolve, ms))
@@ -103,6 +177,9 @@ onMounted(async () => {
   const exist = await invoke<boolean>('is_path_exist')
   isPathExist.value = exist
   dirError.value = !exist
+  if (exist) {
+    await loadSettings()
+  }
 
   invoke<string>('get_local_version').then(res => {
     localVersion.value = res === 'NO_PATCH' ? '0.0' : res
@@ -231,7 +308,7 @@ const startGame = async () => {
 }
 
 const checkUpdates = async () => {
-  const req = await fetch('https://raw.githubusercontent.com/Amirust/rfad-launcher/main/versions.json')
+  const req = await fetch('https://raw.githubusercontent.com/Amirust/rfad-launcher/main/lversions.json')
   const { version, downloadUrl } = await req.json() as { version: string, downloadUrl: string }
 
   const currentVersion = await getVersion()
@@ -252,6 +329,20 @@ const checkUpdates = async () => {
   <div class="absolute bottom-0 right-0 opacity-10 hover:opacity-60 transition-opacity z-[100000]">
     <span class="text-primary font-semibold tracking-wide">{{ launcherVersion }}</span>
   </div>
+  <Transition name="fade-modal" appear>
+    <SettingsModal
+      v-if="isSettingsOpen"
+      :fps-options="fpsOptions"
+      :selected-fps="selectedFps"
+      :selected-voice="selectedVoice"
+      :is-dirty="isSettingsDirty"
+      :is-saving="isSavingSettings"
+      @update:fps="selectedFps = $event"
+      @update:voice="selectedVoice = $event"
+      @close="closeSettings"
+      @save="saveSettings"
+    />
+  </Transition>
   <div data-tauri-drag-region class="titlebar z-[100000]">
     <div class="titlebar-button" id="titlebar-minimize">
       <Minus class="text-primary w-5"/>
@@ -301,7 +392,7 @@ const checkUpdates = async () => {
       <div class="horizontal-divider">
       </div>
       <div class="flex flex-col justify-between h-full">
-        <h1 class="text-5xl text-gradient font-semibold">RFAD SE 6.1</h1>
+        <h1 class="text-5xl text-gradient font-semibold">RFAD SE 6.2</h1>
         <div class="flex flex-col gap-4 relative">
           <transition-group name="fade" tag="div" class="relative flex flex-col gap-4">
             <UpdateConfirmationMessage v-if="showConfirmation" class="w-full">
@@ -349,6 +440,7 @@ const checkUpdates = async () => {
               @update="update(false)"
               @open-mo2="openMo2"
               @open-explorer="openExplorer"
+              @open-settings="openSettings"
               @start_game="startGame"
             >
               <Cog class="w-11 text-primary"/>
@@ -443,5 +535,20 @@ const checkUpdates = async () => {
 .fade-bought {
   mask-composite: intersect;
   mask-image: linear-gradient(0deg, transparent 0%, transparent 0rem, black 3rem), linear-gradient(180deg, transparent 0%, transparent 0rem, black 3rem);
+}
+
+.fade-modal-enter-active,
+.fade-modal-leave-active {
+  transition: opacity 0.2s ease;
+}
+
+.fade-modal-enter-from,
+.fade-modal-leave-to {
+  opacity: 0;
+}
+
+.fade-modal-leave-from,
+.fade-modal-enter-to {
+  opacity: 1;
 }
 </style>

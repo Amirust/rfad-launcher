@@ -40,13 +40,65 @@ fn base_dir() -> PathBuf {
 }
 
 fn profile_dir() -> PathBuf {
-    base_dir().join("profiles").join("RfaD SE 5.2")
+    base_dir().join("profiles").join("RFAD_SE")
+}
+
+fn sse_display_tweaks_path() -> PathBuf {
+    base_dir()
+        .join("mods")
+        .join("SSE Display Tweaks")
+        .join("SKSE")
+        .join("Plugins")
+        .join("SSEDisplayTweaks.ini")
+}
+
+fn skyrim_ini_path() -> PathBuf {
+    profile_dir().join("Skyrim.ini")
 }
 
 #[tauri::command]
 fn is_path_exist() -> bool {
     let path = exe_dir().join("MO2");
     path.exists()
+}
+
+#[tauri::command]
+fn get_framerate_limit() -> Result<u32, String> {
+    let path = sse_display_tweaks_path();
+    let content = fs::read_to_string(&path)
+        .map_err(|e| format!("Failed to read SSEDisplayTweaks.ini: {}", e))?;
+    parse_framerate_limit(&content)
+}
+
+#[tauri::command]
+fn get_voice_locale() -> Result<String, String> {
+    let path = skyrim_ini_path();
+    let content =
+        fs::read_to_string(&path).map_err(|e| format!("Failed to read Skyrim.ini: {}", e))?;
+    Ok(detect_voice_locale(&content))
+}
+
+#[tauri::command]
+fn update_game_settings(framerate: u32, voice: String) -> Result<(), String> {
+    if voice != "en" && voice != "ru" {
+        return Err("Voice must be 'en' or 'ru'".into());
+    }
+
+    let tweaks_path = sse_display_tweaks_path();
+    let tweaks_content = fs::read_to_string(&tweaks_path)
+        .map_err(|e| format!("Failed to read SSEDisplayTweaks.ini: {}", e))?;
+    let updated_tweaks = replace_framerate_limit(&tweaks_content, framerate)?;
+    fs::write(&tweaks_path, updated_tweaks)
+        .map_err(|e| format!("Failed to write SSEDisplayTweaks.ini: {}", e))?;
+
+    let skyrim_path = skyrim_ini_path();
+    let skyrim_content =
+        fs::read_to_string(&skyrim_path).map_err(|e| format!("Failed to read Skyrim.ini: {}", e))?;
+    let updated_skyrim = replace_voice_locale(&skyrim_content, &voice)?;
+    fs::write(&skyrim_path, updated_skyrim)
+        .map_err(|e| format!("Failed to write Skyrim.ini: {}", e))?;
+
+    Ok(())
 }
 
 async fn unpack(mut archive: ZipArchive<File>, output: PathBuf, app: &AppHandle) {
@@ -133,6 +185,98 @@ async fn update_order(path: &PathBuf, new_list: &str, separator: &str) -> Result
     }
 
     Ok(())
+}
+
+fn parse_framerate_limit(content: &str) -> Result<u32, String> {
+    for line in content.lines() {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with(';') || trimmed.starts_with('#') {
+            continue;
+        }
+        if let Some(value) = trimmed.strip_prefix("FramerateLimit=") {
+            return value
+                .trim()
+                .parse::<u32>()
+                .map_err(|e| format!("Cannot parse FramerateLimit: {}", e));
+        }
+    }
+
+    Err("FramerateLimit not found".into())
+}
+
+fn detect_voice_locale(content: &str) -> String {
+    if let Some(line) = content
+        .lines()
+        .find(|line| line.trim_start().starts_with("sResourceArchiveList2"))
+    {
+        if line.contains("Voices_ru0") {
+            return "ru".into();
+        }
+        if line.contains("Voices_en0") {
+            return "en".into();
+        }
+    }
+
+    // Default to English if not found to avoid blocking the UI.
+    "en".into()
+}
+
+fn replace_framerate_limit(content: &str, new_limit: u32) -> Result<String, String> {
+    let mut replaced = false;
+
+    let updated: String = content
+        .split_inclusive('\n')
+        .map(|segment| {
+            let line = segment.trim_end_matches('\n');
+            let trimmed = line.trim_start();
+
+            if trimmed.starts_with("FramerateLimit=") && !trimmed.starts_with(";FramerateLimit=") {
+                replaced = true;
+                let prefix_len = line.len() - trimmed.len();
+                let prefix = &line[..prefix_len];
+                let newline = if segment.ends_with('\n') { "\n" } else { "" };
+                format!("{}FramerateLimit={}{}", prefix, new_limit, newline)
+            } else {
+                segment.to_string()
+            }
+        })
+        .collect();
+
+    if replaced {
+        Ok(updated)
+    } else {
+        Err("FramerateLimit not found in config".into())
+    }
+}
+
+fn replace_voice_locale(content: &str, voice: &str) -> Result<String, String> {
+    let mut replaced = false;
+    let target_token = if voice == "ru" { "Voices_ru0" } else { "Voices_en0" };
+
+    let updated: String = content
+        .split_inclusive('\n')
+        .map(|segment| {
+            let line = segment.trim_end_matches('\n');
+            let trimmed = line.trim_start();
+
+            if trimmed.starts_with("sResourceArchiveList2") {
+                replaced = true;
+                let newline = if segment.ends_with('\n') { "\n" } else { "" };
+                let new_line = line
+                    .replace("Voices_ru0", target_token)
+                    .replace("Voices_en0", target_token);
+                format!("{}{}", new_line, newline)
+            } else {
+                segment.to_string()
+            }
+        })
+        .collect();
+
+    if replaced {
+        Ok(updated)
+    } else {
+        Err("sResourceArchiveList2 not found in Skyrim.ini".into())
+    }
 }
 
 #[tauri::command]
@@ -352,6 +496,11 @@ async fn load_json_patches(app: AppHandle) -> String {
 
 #[tauri::command]
 async fn update_launcher(download_link: String) -> Result<String, String> {
+    let exe_path = exe_dir().join("rfad-launcher.exe");
+    if exe_path.exists() {
+        fs::rename(exe_path, exe_dir().join("old-launcher.exe")).expect("Failed to rename file");
+    }
+
     let response = reqwest::get(&download_link)
         .await
         .map_err(|e| format!("Request failed: {}", e))?;
@@ -360,7 +509,7 @@ async fn update_launcher(download_link: String) -> Result<String, String> {
         return Err(format!("Server returned error: {}", response.status()));
     }
 
-    let dest_path = exe_dir().join("new-launcher.exe");
+    let dest_path = exe_dir().join("rfad-launcher.exe");
 
     let mut file = tokio::fs::File::create(&dest_path)
         .await
@@ -379,21 +528,22 @@ async fn update_launcher(download_link: String) -> Result<String, String> {
 
 #[tauri::command]
 fn start_new_launcher() {
-    let mut command = std::process::Command::new(exe_dir().join("new-launcher.exe"));
-    command.arg("UPDATING");
+    let mut command = std::process::Command::new(exe_dir().join("rfad-launcher.exe"));
     command.spawn().expect("Failed to start new launcher");
+
+    let old_launcher_path = exe_dir().join("old-launcher.exe");
+    if old_launcher_path.exists() {
+        fs::remove_file(old_launcher_path).expect("Failed to remove old launcher");
+    }
 
     std::process::exit(0);
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run(args: Vec<String>) {
-    if args.len() >= 1 && args[0] == "UPDATING" {
-        let exe_path = exe_dir().join("new-launcher.exe");
-        let new_exe_path = exe_dir().join("rfad-launcher.exe");
-        if exe_path.exists() {
-            fs::rename(exe_path, new_exe_path).expect("Failed to rename file");
-        }
+    let old_launcher_path = exe_dir().join("old-launcher.exe");
+    if old_launcher_path.exists() {
+        fs::remove_file(old_launcher_path).expect("Failed to remove old launcher");
     }
 
     tauri::Builder::default()
@@ -407,6 +557,9 @@ pub fn run(args: Vec<String>) {
             open_explorer,
             open_mo2,
             is_path_exist,
+            get_framerate_limit,
+            get_voice_locale,
+            update_game_settings,
             load_json_patches,
             update_launcher,
             exe_dir,
