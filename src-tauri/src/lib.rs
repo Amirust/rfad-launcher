@@ -8,7 +8,7 @@ use std::{
     fs::OpenOptions,
     io::{Error, Read, Seek, SeekFrom, Write},
     path::PathBuf,
-    time::Duration,
+    time::{Duration, SystemTime},
 };
 use futures::StreamExt;
 use tauri::utils::mime_type::MimeType;
@@ -43,17 +43,40 @@ fn profile_dir() -> PathBuf {
     base_dir().join("profiles").join("RFAD_SE")
 }
 
+fn write_log(entry: &str) {
+    let log_path = exe_dir().join("log.txt");
+    let ts = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+
+    if let Ok(mut file) = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_path)
+    {
+        let _ = writeln!(file, "[{}] {}", ts, entry);
+    }
+}
+
 fn sse_display_tweaks_path() -> PathBuf {
-    base_dir()
+    let path = base_dir()
         .join("mods")
         .join("SSE Display Tweaks")
         .join("SKSE")
         .join("Plugins")
-        .join("SSEDisplayTweaks.ini")
+        .join("SSEDisplayTweaks.ini");
+    write_log(&format!(
+        "Resolved SSEDisplayTweaks.ini path: {}",
+        path.display()
+    ));
+    path
 }
 
 fn skyrim_ini_path() -> PathBuf {
-    profile_dir().join("Skyrim.ini")
+    let path = profile_dir().join("Skyrim.ini");
+    write_log(&format!("Resolved Skyrim.ini path: {}", path.display()));
+    path
 }
 
 #[tauri::command]
@@ -65,17 +88,50 @@ fn is_path_exist() -> bool {
 #[tauri::command]
 fn get_framerate_limit() -> Result<u32, String> {
     let path = sse_display_tweaks_path();
-    let content = fs::read_to_string(&path)
-        .map_err(|e| format!("Failed to read SSEDisplayTweaks.ini: {}", e))?;
-    parse_framerate_limit(&content)
+    write_log(&format!(
+        "Reading framerate limit from {}",
+        path.display()
+    ));
+
+    let content = fs::read_to_string(&path).map_err(|e| {
+        let msg = format!("Failed to read SSEDisplayTweaks.ini: {}", e);
+        write_log(&msg);
+        msg
+    })?;
+
+    match parse_framerate_limit(&content) {
+        Ok(limit) => {
+            write_log(&format!("Parsed FramerateLimit={}", limit));
+            Ok(limit)
+        }
+        Err(err) => {
+            write_log(&format!(
+                "Failed to parse FramerateLimit from {}: {}",
+                path.display(),
+                err
+            ));
+            Err(err)
+        }
+    }
 }
 
 #[tauri::command]
 fn get_voice_locale() -> Result<String, String> {
     let path = skyrim_ini_path();
-    let content =
-        fs::read_to_string(&path).map_err(|e| format!("Failed to read Skyrim.ini: {}", e))?;
-    Ok(detect_voice_locale(&content))
+    write_log(&format!(
+        "Reading voice locale from {}",
+        path.display()
+    ));
+
+    let content = fs::read_to_string(&path).map_err(|e| {
+        let msg = format!("Failed to read Skyrim.ini: {}", e);
+        write_log(&msg);
+        msg
+    })?;
+
+    let locale = detect_voice_locale(&content);
+    write_log(&format!("Detected voice locale: {}", locale));
+    Ok(locale)
 }
 
 #[tauri::command]
@@ -84,19 +140,59 @@ fn update_game_settings(framerate: u32, voice: String) -> Result<(), String> {
         return Err("Voice must be 'en' or 'ru'".into());
     }
 
+    write_log(&format!(
+        "Updating game settings: framerate={} voice={}",
+        framerate, voice
+    ));
+
     let tweaks_path = sse_display_tweaks_path();
-    let tweaks_content = fs::read_to_string(&tweaks_path)
-        .map_err(|e| format!("Failed to read SSEDisplayTweaks.ini: {}", e))?;
-    let updated_tweaks = replace_framerate_limit(&tweaks_content, framerate)?;
-    fs::write(&tweaks_path, updated_tweaks)
-        .map_err(|e| format!("Failed to write SSEDisplayTweaks.ini: {}", e))?;
+    let tweaks_content = fs::read_to_string(&tweaks_path).map_err(|e| {
+        let msg = format!("Failed to read SSEDisplayTweaks.ini: {}", e);
+        write_log(&msg);
+        msg
+    })?;
+    let updated_tweaks = replace_framerate_limit(&tweaks_content, framerate).map_err(|e| {
+        write_log(&format!(
+            "Failed to replace FramerateLimit in {}: {}",
+            tweaks_path.display(),
+            e
+        ));
+        e
+    })?;
+    fs::write(&tweaks_path, updated_tweaks).map_err(|e| {
+        let msg = format!("Failed to write SSEDisplayTweaks.ini: {}", e);
+        write_log(&msg);
+        msg
+    })?;
+    write_log(&format!(
+        "Saved framerate limit to {}",
+        tweaks_path.display()
+    ));
 
     let skyrim_path = skyrim_ini_path();
-    let skyrim_content =
-        fs::read_to_string(&skyrim_path).map_err(|e| format!("Failed to read Skyrim.ini: {}", e))?;
-    let updated_skyrim = replace_voice_locale(&skyrim_content, &voice)?;
-    fs::write(&skyrim_path, updated_skyrim)
-        .map_err(|e| format!("Failed to write Skyrim.ini: {}", e))?;
+    let skyrim_content = fs::read_to_string(&skyrim_path).map_err(|e| {
+        let msg = format!("Failed to read Skyrim.ini: {}", e);
+        write_log(&msg);
+        msg
+    })?;
+    let updated_skyrim = replace_voice_locale(&skyrim_content, &voice).map_err(|e| {
+        write_log(&format!(
+            "Failed to replace voice locale in {}: {}",
+            skyrim_path.display(),
+            e
+        ));
+        e
+    })?;
+    fs::write(&skyrim_path, updated_skyrim).map_err(|e| {
+        let msg = format!("Failed to write Skyrim.ini: {}", e);
+        write_log(&msg);
+        msg
+    })?;
+    write_log(&format!(
+        "Saved voice locale '{}' to {}",
+        voice,
+        skyrim_path.display()
+    ));
 
     Ok(())
 }
@@ -193,11 +289,13 @@ fn parse_framerate_limit(content: &str) -> Result<u32, String> {
         if trimmed.starts_with(';') || trimmed.starts_with('#') {
             continue;
         }
-        if let Some(value) = trimmed.strip_prefix("FramerateLimit=") {
-            return value
-                .trim()
-                .parse::<u32>()
-                .map_err(|e| format!("Cannot parse FramerateLimit: {}", e));
+        if trimmed.starts_with("FramerateLimit") {
+            if let Some((_, value)) = trimmed.split_once('=') {
+                return value
+                    .trim()
+                    .parse::<u32>()
+                    .map_err(|e| format!("Cannot parse FramerateLimit: {}", e));
+            }
         }
     }
 
@@ -230,12 +328,15 @@ fn replace_framerate_limit(content: &str, new_limit: u32) -> Result<String, Stri
             let line = segment.trim_end_matches('\n');
             let trimmed = line.trim_start();
 
-            if trimmed.starts_with("FramerateLimit=") && !trimmed.starts_with(";FramerateLimit=") {
+            if trimmed.starts_with("FramerateLimit")
+                && !trimmed.starts_with(";FramerateLimit")
+                && trimmed.contains('=')
+            {
                 replaced = true;
                 let prefix_len = line.len() - trimmed.len();
                 let prefix = &line[..prefix_len];
                 let newline = if segment.ends_with('\n') { "\n" } else { "" };
-                format!("{}FramerateLimit={}{}", prefix, new_limit, newline)
+                format!("{}FramerateLimit = {}{}", prefix, new_limit, newline)
             } else {
                 segment.to_string()
             }
@@ -523,18 +624,38 @@ async fn update_launcher(download_link: String) -> Result<String, String> {
             .map_err(|e| format!("Error writing to file: {}", e))?;
     }
 
+    write_log("update_launcher finished download");
+
     Ok("Download complete!".to_string())
 }
 
 #[tauri::command]
 fn start_new_launcher() {
-    let mut command = std::process::Command::new(exe_dir().join("rfad-launcher.exe"));
-    command.spawn().expect("Failed to start new launcher");
+    let new_path = exe_dir().join("rfad-launcher.exe");
+    write_log(&format!(
+        "Attempting to start new launcher: {}",
+        new_path.display()
+    ));
 
-    let old_launcher_path = exe_dir().join("old-launcher.exe");
-    if old_launcher_path.exists() {
-        fs::remove_file(old_launcher_path).expect("Failed to remove old launcher");
-    }
+    match std::process::Command::new(&new_path).spawn() {
+        Ok(_) => write_log("New launcher started successfully"),
+        Err(e) => write_log(&format!("Failed to start new launcher: {}", e)),
+    };
+
+    // let old_launcher_path = exe_dir().join("old-launcher.exe");
+    // if old_launcher_path.exists() {
+    //     match fs::remove_file(&old_launcher_path) {
+    //         Ok(_) => write_log(&format!(
+    //             "Removed old launcher: {}",
+    //             old_launcher_path.display()
+    //         )),
+    //         Err(e) => write_log(&format!(
+    //             "Failed to remove old launcher {}: {}",
+    //             old_launcher_path.display(),
+    //             e
+    //         )),
+    //     }
+    // }
 
     std::process::exit(0);
 }
