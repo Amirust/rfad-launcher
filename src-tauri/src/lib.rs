@@ -674,21 +674,6 @@ fn start_new_launcher() {
     match std::process::Command::new(&new_path).spawn() {
         Ok(_) => write_log("New launcher started successfully"),
         Err(e) => write_log(&format!("Failed to start new launcher: {}", e)),
-    };
-
-    let old_launcher_path = exe_dir().join("old-launcher.exe");
-    if old_launcher_path.exists() {
-        match fs::remove_file(&old_launcher_path) {
-            Ok(_) => write_log(&format!(
-                "Removed old launcher: {}",
-                old_launcher_path.display()
-            )),
-            Err(e) => write_log(&format!(
-                "Failed to remove old launcher {}: {}",
-                old_launcher_path.display(),
-                e
-            )),
-        }
     }
 
     std::process::exit(0);
