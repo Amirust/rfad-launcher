@@ -79,6 +79,15 @@ fn skyrim_ini_path() -> PathBuf {
     path
 }
 
+fn skyrim_custom_ini_path() -> PathBuf {
+    let path = profile_dir().join("SkyrimCustom.ini");
+    write_log(&format!(
+        "Resolved SkyrimCustom.ini path: {}",
+        path.display()
+    ));
+    path
+}
+
 #[tauri::command]
 fn is_path_exist() -> bool {
     let path = exe_dir().join("MO2");
@@ -192,6 +201,31 @@ fn update_game_settings(framerate: u32, voice: String) -> Result<(), String> {
         "Saved voice locale '{}' to {}",
         voice,
         skyrim_path.display()
+    ));
+
+    let skyrim_custom_path = skyrim_custom_ini_path();
+    let skyrim_custom_content = fs::read_to_string(&skyrim_custom_path).map_err(|e| {
+        let msg = format!("Failed to read SkyrimCustom.ini: {}", e);
+        write_log(&msg);
+        msg
+    })?;
+    let updated_skyrim_custom = replace_voice_locale(&skyrim_custom_content, &voice).map_err(|e| {
+        write_log(&format!(
+            "Failed to replace voice locale in {}: {}",
+            skyrim_custom_path.display(),
+            e
+        ));
+        e
+    })?;
+    fs::write(&skyrim_custom_path, updated_skyrim_custom).map_err(|e| {
+        let msg = format!("Failed to write SkyrimCustom.ini: {}", e);
+        write_log(&msg);
+        msg
+    })?;
+    write_log(&format!(
+        "Saved voice locale '{}' to {}",
+        voice,
+        skyrim_custom_path.display()
     ));
 
     Ok(())
@@ -642,20 +676,20 @@ fn start_new_launcher() {
         Err(e) => write_log(&format!("Failed to start new launcher: {}", e)),
     };
 
-    // let old_launcher_path = exe_dir().join("old-launcher.exe");
-    // if old_launcher_path.exists() {
-    //     match fs::remove_file(&old_launcher_path) {
-    //         Ok(_) => write_log(&format!(
-    //             "Removed old launcher: {}",
-    //             old_launcher_path.display()
-    //         )),
-    //         Err(e) => write_log(&format!(
-    //             "Failed to remove old launcher {}: {}",
-    //             old_launcher_path.display(),
-    //             e
-    //         )),
-    //     }
-    // }
+    let old_launcher_path = exe_dir().join("old-launcher.exe");
+    if old_launcher_path.exists() {
+        match fs::remove_file(&old_launcher_path) {
+            Ok(_) => write_log(&format!(
+                "Removed old launcher: {}",
+                old_launcher_path.display()
+            )),
+            Err(e) => write_log(&format!(
+                "Failed to remove old launcher {}: {}",
+                old_launcher_path.display(),
+                e
+            )),
+        }
+    }
 
     std::process::exit(0);
 }
