@@ -3,95 +3,84 @@ mod events;
 
 pub use events::DownloadProgress;
 
-use futures::pin_mut;
-use futures::prelude::*;
-use google_drive3::common::to_bytes;
-use google_drive3::{
-    hyper_rustls::HttpsConnector, hyper_util::client::legacy::connect::HttpConnector, yup_oauth2,
-    yup_oauth2::ServiceAccountKey, DriveHub,
-};
-use http_body_util::BodyStream;
-use hyper::body::Body;
-use std::io;
+use futures::StreamExt;
+use serde::Deserialize;
 use tauri::utils::mime_type::MimeType;
 use tauri::AppHandle;
 use tauri::Emitter;
-use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 
-const SCOPE: &str = "https://www.googleapis.com/auth/drive";
+// Injected at compile time from the RFAD_GDRIVE_API_KEY environment variable
+const API_KEY: &str = env!(
+    "RFAD_GDRIVE_API_KEY",
+    "RFAD_GDRIVE_API_KEY is not set — put it in src-tauri/.cargo/config.toml or export it before building"
+);
+const DRIVE_API: &str = "https://www.googleapis.com/drive/v3";
 
 pub struct GoogleDriveClient {
-    hub: DriveHub<HttpsConnector<HttpConnector>>,
+    client: reqwest::Client,
+}
+
+#[derive(Deserialize)]
+struct FileEntry {
+    #[serde(default)]
+    id: String,
+    #[serde(default)]
+    name: String,
+    #[serde(default, rename = "mimeType")]
+    mime_type: String,
+}
+
+#[derive(Deserialize)]
+struct FileList {
+    #[serde(default)]
+    files: Vec<FileEntry>,
 }
 
 impl GoogleDriveClient {
     pub async fn new() -> Self {
-        // HARDCODE BTW
-        // From https://github.com/sancshous/rfad_launcher/blob/main/main.py
-        let service_account: ServiceAccountKey = ServiceAccountKey {
-            key_type: Some("service_account".to_string()),
-            project_id: Some("kiberone-422110".to_string()),
-            private_key_id: Some("1fde9ff94ad4ebe5b911559ca3ffaa337ef95141".to_string()),
-            private_key: "-----BEGIN PRIVATE KEY-----\nMIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQC5L1L8uTKSoXtr\n2SiF/ICNc2vaWm7JwSXKpto1TF7pBJlPxGGZ6BHynHY3R9sBo9WpCzu70r7M/Bvw\noPbOw4+XwHDmNYCXiRNLg66bkp+ziJKcdK0Z1HPPDhb1zL1yrzQIE7MzxChgba/m\n8ZX4mPBUBwpkE2fEdRk0ZhF148NSglwikiqQljG8HtwaOTFFIRSAkFNQUIbv4CdD\n6iaiY8qtD2vxs2w8O999eZM4661iF12JKis94Q88rI8QiYtRBNKf5WDOa/JbiCEU\nz6BZaNwostWqkeXgXT3MFqqSF2rACHFsvgNSi1hNlqN0mbq6vZyzSyarfABz3A3W\nr+5ItihdAgMBAAECggEAKeJ5S637sUyS5M7GKp/014l+oHGJ01o7WP2qJxnx8ZRX\ntMH/LVdfD9exqUk4UMOkpMpkpVPCUgzHqQJPMG7tAG7HWlpJjnyzf4X2LTvZoTrH\nplmBeXEjDHbsXIYFZ3YXN6h1BMVeOIk2mu6TdBnraaX6BK6a7sVpgP+A/YAZgoST\n63N8K48yV8NxsEIgE73yKDNuVVWI7FJPvtAux0f5uVlDyXiwWqTalK50MNicSBDC\nr9RpRQNrABTghxNtnI94D8GFWQfYGrgDfD4hn5F/OSGjfOqsGITYsAE+jrbxDu59\nB8iWuIpxWxHxgks4ApOea6zA4PUD43dQKq/vQu43hQKBgQD+rnuO0ZF0mVesXIz6\nE1FPNBsolnQUeYXWUqjhZ0mQaEg3XU7rNsffJqHitpt6cfkx3UVfqSJ9fPQ8JIJ3\nxilczz0dvy5+fuQPMskvTyzbC5KahIw8uMWaFPtMEmwaVXmvXuRnwN+kh6rfyhdn\njp4WUEpVBcGX+oGX81O1yqohOwKBgQC6JL2noKIpJV9Qa/gqUCfIXsnry+k5Cl+0\nEpr/XSWS/6l2m/Lm5Nw1F1sRbPhtpVYHDELdnw9t692MaojVrgkqFImSD/ZLxHXQ\n6DKEoT7FbvkV4vVJxEDwMQDDTpzLKNn0Sgbh0rDv3Y8dlte9RLAqQtNI0YuOVv+6\nVLjGITXDRwKBgBS8cCL4vTcZJSJLhs71s7EXNP7hASKJonQI1udDWaIAW6DmX/6W\nvz9UDeo/o/kcPoXo1jUruDsvaVNcRaMq50M/PGKnpkl2W2tBX1ASyjwrfQxHroNj\nJ/ObsbpH5bVfMEEvILmx4oOq6CbAdZdg7U4zy1mQ1mphYxvUHAS5M5DxAoGAeweV\nopl1FKTy3oC+QZlA8hpUc1kPCPhmUOqLL4UtNH9uTkq8vQc+1IhfVKElgbLprTbZ\nawmadRiUEh7H2hNxUzLHypZqP6HWDQGrgiXhCzVRxLmBTgQ8t4Rr8Kqgz1Zs2B2l\ndtR+xcs2sGPmq94eYZBRfauiBa5Sz6D3j1yb4DkCgYBUB+RjFPSqNQ1JQQAsxT5p\nKr7QLa8idKCJVUJfR0LCdtT2YNPcNFiGNtbFXflKuVZB9hciuSjxySt/yM++8XJQ\nxzeRSabfaeySCbTrHEpJeEegnAZ9OJhHadsm/HgRmHODqxCVokhoSYn+OxjzXeun\nm8e3JMCsdL6AX+oRz/vRyA==\n-----END PRIVATE KEY-----\n".to_string(),
-            client_email: "bookingtest@kiberone-422110.iam.gserviceaccount.com".to_string(),
-            client_id: Some("111582459063203248377".to_string()),
-            auth_uri: Some("https://accounts.google.com/o/oauth2/auth".to_string()),
-            token_uri: "https://oauth2.googleapis.com/token".to_string(),
-            auth_provider_x509_cert_url: Some("https://www.googleapis.com/oauth2/v1/certs".to_string()),
-            client_x509_cert_url: Some("https://www.googleapis.com/robot/v1/metadata/x509/bookingtest%40kiberone-422110.iam.gserviceaccount.com".to_string()),
-        };
-
-        let auth = yup_oauth2::ServiceAccountAuthenticator::builder(service_account)
-            .build()
-            .await
-            .unwrap();
-
-        let client =
-            hyper_util::client::legacy::Client::builder(hyper_util::rt::TokioExecutor::new())
-                .build(
-                    hyper_rustls::HttpsConnectorBuilder::new()
-                        .with_native_roots()
-                        .unwrap()
-                        .https_or_http()
-                        .enable_http1()
-                        .build(),
-                );
-
         Self {
-            hub: DriveHub::new(client, auth),
+            client: reqwest::Client::new(),
         }
     }
 
     pub async fn list_files(&self, folder_id: &str) -> Vec<(String, String, String)> {
+        let q = format!("'{}' in parents", folder_id);
         let result = self
-            .hub
-            .files()
-            .list()
-            .q(&format!("'{}' in parents", folder_id))
-            .add_scope(SCOPE)
-            .doit()
+            .client
+            .get(format!("{}/files", DRIVE_API))
+            .query(&[
+                ("q", q.as_str()),
+                ("key", API_KEY),
+                ("fields", "files(id,name,mimeType)"),
+                ("pageSize", "1000"),
+            ])
+            .send()
             .await;
 
-        match result {
-            Ok((_, file_list)) => {
-                if let Some(files) = file_list.files {
-                    files
-                        .into_iter()
-                        .map(|file| {
-                            (
-                                file.id.unwrap_or_default(),
-                                file.name.unwrap_or_default(),
-                                file.mime_type.unwrap_or_default(),
-                            )
-                        })
-                        .collect()
-                } else {
-                    vec![]
-                }
-            }
+        let response = match result {
+            Ok(resp) => resp,
             Err(e) => {
                 println!("Error fetching files: {:?}", e);
+                return vec![];
+            }
+        };
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            println!("Error fetching files: {} {}", status, body);
+            return vec![];
+        }
+
+        match response.json::<FileList>().await {
+            Ok(list) => list
+                .files
+                .into_iter()
+                .map(|f| (f.id, f.name, f.mime_type))
+                .collect(),
+            Err(e) => {
+                println!("Error parsing file list: {:?}", e);
                 vec![]
             }
         }
@@ -104,85 +93,74 @@ impl GoogleDriveClient {
         output_path: &str,
         app: AppHandle,
     ) -> Result<(), String> {
-        let response = match mime_type {
-            MimeType::Txt => self
-                .hub
-                .files()
-                .export(file_id, "text/plain")
-                .param("alt", "media")
-                .add_scope(SCOPE)
-                .doit()
-                .await
-                .expect("Error downloading file"),
-            _ => {
-                let (resp, _) = self
-                    .hub
-                    .files()
-                    .get(file_id)
-                    .param("alt", "media")
-                    .add_scope(SCOPE)
-                    .doit()
-                    .await
-                    .expect("Error downloading file");
-                resp
-            }
+        let url = match mime_type {
+            // Native Google formats (Docs) must be exported.
+            MimeType::Txt => format!(
+                "{}/files/{}/export?mimeType=text/plain&key={}",
+                DRIVE_API, file_id, API_KEY
+            ),
+            // Regular binary files are streamed with alt=media.
+            _ => format!("{}/files/{}?alt=media&key={}", DRIVE_API, file_id, API_KEY),
         };
 
-        let total_size = response.size_hint().lower();
+        let response = self
+            .client
+            .get(url)
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            return Err(format!("Error downloading file: {} {}", status, body));
+        }
+
+        let total_size = response.content_length().unwrap_or(0);
         let mut file = tokio::fs::File::create(output_path)
             .await
             .map_err(|e| e.to_string())?;
         let start_time = std::time::Instant::now();
         let mut downloaded: u64 = 0;
+        let mut last_emit: u64 = 0;
 
-        let body = response.into_body();
-        let stream_of_frames = BodyStream::new(body);
-        let stream_of_bytes = stream_of_frames
-            .try_filter_map(|frame| async move { Ok(frame.into_data().ok()) })
-            .map_err(|err| io::Error::new(io::ErrorKind::Other, err));
-        let mut reader = tokio_util::io::StreamReader::new(stream_of_bytes);
-        pin_mut!(reader);
+        let mut stream = response.bytes_stream();
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk.map_err(|e| e.to_string())?;
+            downloaded += chunk.len() as u64;
+            file.write_all(&chunk).await.map_err(|e| e.to_string())?;
 
-        let mut buffer = vec![0u8; 4 * 1024 * 1024];
-        loop {
-            let bytes_read = AsyncReadExt::read(&mut reader, &mut buffer)
-                .await
-                .map_err(|e| e.to_string())?;
-            if bytes_read == 0 {
-                break;
+            // Throttle progress events to avoid flooding the frontend.
+            if downloaded - last_emit >= 1024 * 1024 || downloaded == total_size {
+                last_emit = downloaded;
+
+                let elapsed = start_time.elapsed().as_secs_f64();
+                let speed = if elapsed > 0.0 {
+                    (downloaded as f64 / elapsed) as u64
+                } else {
+                    0
+                };
+                let percentage = if total_size > 0 {
+                    (downloaded as f64 / total_size as f64) * 100.0
+                } else {
+                    0.0
+                };
+
+                app.emit(
+                    "download:progress",
+                    Some(DownloadProgress {
+                        download_bytes: downloaded,
+                        percentage,
+                        speed_bytes_per_sec: speed,
+                        file_name: output_path
+                            .split(['/', '\\'])
+                            .last()
+                            .unwrap_or_default()
+                            .to_string(),
+                    }),
+                )
+                .ok();
             }
-
-            downloaded += bytes_read as u64;
-            file.write_all(&buffer[..bytes_read])
-                .await
-                .map_err(|e| e.to_string())?;
-
-            let elapsed = start_time.elapsed().as_secs_f64();
-            let speed = if elapsed > 0.0 {
-                (downloaded as f64 / elapsed) as u64
-            } else {
-                0
-            };
-            let percentage = if total_size > 0 {
-                (downloaded as f64 / total_size as f64) * 100.0
-            } else {
-                0.0
-            };
-
-            app.emit(
-                "download:progress",
-                Some(DownloadProgress {
-                    download_bytes: downloaded,
-                    percentage,
-                    speed_bytes_per_sec: speed,
-                    file_name: output_path
-                        .split("/")
-                        .last()
-                        .unwrap_or_default()
-                        .to_string(),
-                }),
-            )
-            .ok();
         }
 
         file.flush().await.map_err(|e| e.to_string())?;
@@ -190,21 +168,16 @@ impl GoogleDriveClient {
     }
 
     pub async fn load_text(&self, file_id: &str) -> Result<String, ()> {
-        let response = self
-            .hub
-            .files()
-            .export(file_id, "text/plain")
-            .param("alt", "media")
-            .add_scope(SCOPE)
-            .doit()
-            .await
-            .expect("Error downloading file");
+        let url = format!(
+            "{}/files/{}/export?mimeType=text/plain&key={}",
+            DRIVE_API, file_id, API_KEY
+        );
 
-        let body = response.into_body();
-        let bytes = to_bytes(body).await.expect("Error reading bytes");
+        let response = self.client.get(url).send().await.map_err(|_| ())?;
+        if !response.status().is_success() {
+            return Err(());
+        }
 
-        let text = String::from_utf8(Vec::from(bytes)).expect("Error converting bytes to string");
-
-        Ok(text)
+        response.text().await.map_err(|_| ())
     }
 }

@@ -12,3 +12,15 @@
 Для сборки вам нужно написать `npm tauri build` в консоль (или `bun tauri build` если вы юзаете бан, рекомендую юзать именно бан) <br>
 Собранный екзешник будет в папке `target/release/rfad-launcher.exe`<br>
 
+### Google Drive API ключ
+
+Лаунчер качает файлы с Google Drive по API-ключу, который **вшивается на этапе компиляции** и в репозиторий не коммитится, без него сборка упадёт с ошибкой `RFAD_GDRIVE_API_KEY is not set`.
+
+Перед первой сборкой:
+
+1. Скопируйте `src-tauri/.cargo/config.toml.example` в `src-tauri/.cargo/config.toml`.
+2. Вставьте туда свой ключ:
+    ```toml
+    [env]
+    RFAD_GDRIVE_API_KEY = "ваш-google-drive-api-ключ"
+    ```

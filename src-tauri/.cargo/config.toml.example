@@ -1,0 +1,5 @@
+# Copy this file to `config.toml` (same directory) and set the real key.
+# `config.toml` is gitignored so the key never lands in the repo.
+# The value is embedded at compile time via env!("RFAD_GDRIVE_API_KEY").
+[env]
+RFAD_GDRIVE_API_KEY = "your-google-drive-api-key-here"
