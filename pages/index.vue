@@ -21,6 +21,7 @@ import type { PatchComponentProps } from '~/components/PatchComponent.vue';
 import Minus from '~/components/icons/Minus.vue';
 import Expand from '~/components/icons/Expand.vue';
 import SettingsModal from '~/components/SettingsModal.vue';
+import RemoteErrorMessage from '~/components/RemoteErrorMessage.vue';
 
 const firstStart = ref(true)
 
@@ -43,6 +44,7 @@ const updateUnpackPercentage = ref(0)
 const updateUnpacked = ref(false)
 
 const updateAvailable = ref(false)
+const remoteError = ref(false)
 
 const additionalProgress = ref(0)
 
@@ -192,6 +194,12 @@ onMounted(async () => {
     }
     remoteVersion.value = res === 'NO_PATCH' ? '0.0' : res
 
+    if (remoteVersion.value === '0.0') {
+      if (isPathExist.value) remoteError.value = true
+      updateAvailable.value = false
+      return
+    }
+
     updateAvailable.value = remoteVersion.value !== localVersion.value
   })
 
@@ -308,7 +316,10 @@ const startGame = async () => {
 }
 
 const checkUpdates = async () => {
-  const req = await fetch('https://raw.githubusercontent.com/Amirust/rfad-launcher/main/lversions.json')
+  // ?t=<timestamp> to avoid cache
+  const req = await fetch(`https://raw.githubusercontent.com/Amirust/rfad-launcher/main/lversions.json?t=${Date.now()}`, {
+    cache: 'no-store'
+  })
   const { version, downloadUrl } = await req.json() as { version: string, downloadUrl: string }
 
   const currentVersion = await getVersion()
@@ -407,6 +418,7 @@ const checkUpdates = async () => {
             </UpdateConfirmationMessage>
             <DirErrorMessage v-if="dirError" class="w-full"/>
             <DirErrorMessage v-if="googleDriveDirError" class="w-full"/>
+            <RemoteErrorMessage v-if="remoteError && !updateStarted" class="w-full"/>
             <UpdatingMessage :percentage="updatePercentage" v-if="updateStarted" class="w-full"/>
             <UnpackingMessage :percentage="updateUnpackPercentage" v-if="updateUnpackStarted" class="w-full"/>
             <DownloadingMessage :speed="updateDownloadSpeed" :percentage="updateDownloadPercentage" v-if="updateDownloadStarted" class="w-full"/>

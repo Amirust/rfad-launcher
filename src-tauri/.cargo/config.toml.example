@@ -1,5 +1,15 @@
-# Copy this file to `config.toml` (same directory) and set the real key.
-# `config.toml` is gitignored so the key never lands in the repo.
-# The value is embedded at compile time via env!("RFAD_GDRIVE_API_KEY").
 [env]
-RFAD_GDRIVE_API_KEY = "your-google-drive-api-key-here"
+RFAD_GDRIVE_SA_KEY = '''
+{
+  "type": "service_account",
+  "project_id": "your-project-id",
+  "private_key_id": "...",
+  "private_key": "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n",
+  "client_email": "your-sa@your-project-id.iam.gserviceaccount.com",
+  "client_id": "...",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "..."
+}
+'''

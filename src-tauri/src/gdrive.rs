@@ -4,21 +4,47 @@ mod events;
 pub use events::DownloadProgress;
 
 use futures::StreamExt;
-use serde::Deserialize;
+use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
+use serde::{Deserialize, Serialize};
+use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::utils::mime_type::MimeType;
 use tauri::AppHandle;
 use tauri::Emitter;
 use tokio::io::AsyncWriteExt;
 
-// Injected at compile time from the RFAD_GDRIVE_API_KEY environment variable
-const API_KEY: &str = env!(
-    "RFAD_GDRIVE_API_KEY",
-    "RFAD_GDRIVE_API_KEY is not set — put it in src-tauri/.cargo/config.toml or export it before building"
+const SERVICE_ACCOUNT_JSON: &str = env!(
+    "RFAD_GDRIVE_SA_KEY",
+    "RFAD_GDRIVE_SA_KEY is not set — put the service-account JSON in src-tauri/.cargo/config.toml or export it before building"
 );
 const DRIVE_API: &str = "https://www.googleapis.com/drive/v3";
+const SCOPE: &str = "https://www.googleapis.com/auth/drive.readonly";
 
 pub struct GoogleDriveClient {
     client: reqwest::Client,
+    token: Option<String>,
+}
+
+// Only the fields we need from the service-account JSON.
+#[derive(Deserialize)]
+struct ServiceAccountKey {
+    client_email: String,
+    private_key: String,
+    private_key_id: String,
+    token_uri: String,
+}
+
+#[derive(Serialize)]
+struct Claims<'a> {
+    iss: &'a str,
+    scope: &'a str,
+    aud: &'a str,
+    exp: u64,
+    iat: u64,
+}
+
+#[derive(Deserialize)]
+struct TokenResponse {
+    access_token: String,
 }
 
 #[derive(Deserialize)]
@@ -37,21 +63,91 @@ struct FileList {
     files: Vec<FileEntry>,
 }
 
+async fn fetch_access_token(client: &reqwest::Client) -> Option<String> {
+    let key: ServiceAccountKey = match serde_json::from_str(SERVICE_ACCOUNT_JSON) {
+        Ok(k) => k,
+        Err(e) => {
+            println!("Invalid service account JSON: {:?}", e);
+            return None;
+        }
+    };
+
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .ok()?
+        .as_secs();
+    let claims = Claims {
+        iss: &key.client_email,
+        scope: SCOPE,
+        aud: &key.token_uri,
+        exp: now + 3600,
+        iat: now,
+    };
+
+    let mut header = Header::new(Algorithm::RS256);
+    header.kid = Some(key.private_key_id.clone());
+    let encoding_key = match EncodingKey::from_rsa_pem(key.private_key.as_bytes()) {
+        Ok(k) => k,
+        Err(e) => {
+            println!("Invalid service account private key: {:?}", e);
+            return None;
+        }
+    };
+    let jwt = match encode(&header, &claims, &encoding_key) {
+        Ok(j) => j,
+        Err(e) => {
+            println!("Failed to sign JWT: {:?}", e);
+            return None;
+        }
+    };
+
+    let response = client
+        .post(&key.token_uri)
+        .form(&[
+            ("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer"),
+            ("assertion", jwt.as_str()),
+        ])
+        .send()
+        .await
+        .ok()?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        println!("Token request failed: {} {}", status, body);
+        return None;
+    }
+
+    response
+        .json::<TokenResponse>()
+        .await
+        .ok()
+        .map(|t| t.access_token)
+}
+
 impl GoogleDriveClient {
     pub async fn new() -> Self {
-        Self {
-            client: reqwest::Client::new(),
-        }
+        let client = reqwest::Client::new();
+        let token = fetch_access_token(&client).await;
+        Self { client, token }
     }
 
     pub async fn list_files(&self, folder_id: &str) -> Vec<(String, String, String)> {
+        let token = match &self.token {
+            Some(t) => t,
+            None => {
+                println!("Error fetching files: no access token");
+                return vec![];
+            }
+        };
+
         let q = format!("'{}' in parents", folder_id);
         let result = self
             .client
             .get(format!("{}/files", DRIVE_API))
+            .bearer_auth(token)
             .query(&[
                 ("q", q.as_str()),
-                ("key", API_KEY),
                 ("fields", "files(id,name,mimeType)"),
                 ("pageSize", "1000"),
             ])
@@ -93,19 +189,25 @@ impl GoogleDriveClient {
         output_path: &str,
         app: AppHandle,
     ) -> Result<(), String> {
+        let token = self
+            .token
+            .as_ref()
+            .ok_or_else(|| "no access token".to_string())?;
+
         let url = match mime_type {
             // Native Google formats (Docs) must be exported.
             MimeType::Txt => format!(
-                "{}/files/{}/export?mimeType=text/plain&key={}",
-                DRIVE_API, file_id, API_KEY
+                "{}/files/{}/export?mimeType=text/plain",
+                DRIVE_API, file_id
             ),
             // Regular binary files are streamed with alt=media.
-            _ => format!("{}/files/{}?alt=media&key={}", DRIVE_API, file_id, API_KEY),
+            _ => format!("{}/files/{}?alt=media", DRIVE_API, file_id),
         };
 
         let response = self
             .client
             .get(url)
+            .bearer_auth(token)
             .send()
             .await
             .map_err(|e| e.to_string())?;
@@ -168,12 +270,17 @@ impl GoogleDriveClient {
     }
 
     pub async fn load_text(&self, file_id: &str) -> Result<String, ()> {
-        let url = format!(
-            "{}/files/{}/export?mimeType=text/plain&key={}",
-            DRIVE_API, file_id, API_KEY
-        );
+        let token = self.token.as_ref().ok_or(())?;
 
-        let response = self.client.get(url).send().await.map_err(|_| ())?;
+        let url = format!("{}/files/{}/export?mimeType=text/plain", DRIVE_API, file_id);
+
+        let response = self
+            .client
+            .get(url)
+            .bearer_auth(token)
+            .send()
+            .await
+            .map_err(|_| ())?;
         if !response.status().is_success() {
             return Err(());
         }
