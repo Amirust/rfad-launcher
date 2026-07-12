@@ -1,7 +1,9 @@
 mod events;
 mod gdrive;
+mod status;
 
 use crate::events::{UnpackProgress, UpdateProgress, UpdateStatus};
+use crate::status::RemoteStatus;
 use std::{
     env, fs,
     fs::File,
@@ -231,41 +233,73 @@ fn update_game_settings(framerate: u32, voice: String) -> Result<(), String> {
     Ok(())
 }
 
-async fn unpack(mut archive: ZipArchive<File>, output: PathBuf, app: &AppHandle) {
+async fn unpack(
+    mut archive: ZipArchive<File>,
+    output: PathBuf,
+    app: &AppHandle,
+) -> Result<(), String> {
     sleep(Duration::from_millis(400)).await;
     let total_files = archive.len();
+    write_log(&format!(
+        "unpack: extracting {} entries to {}",
+        total_files,
+        output.display()
+    ));
 
     for i in 0..total_files {
-        let mut file = archive.by_index(i).unwrap();
-        let outpath = output.join(file.enclosed_name().unwrap());
+        let mut file = archive
+            .by_index(i)
+            .map_err(|e| format!("cannot read zip entry {}: {}", i, e))?;
+        let name = file
+            .enclosed_name()
+            .ok_or_else(|| format!("zip entry {} has unsafe/invalid path", i))?;
+        let outpath = output.join(name);
 
         if file.is_dir() {
-            fs::create_dir_all(&outpath).unwrap();
+            fs::create_dir_all(&outpath)
+                .map_err(|e| format!("cannot create dir {}: {}", outpath.display(), e))?;
         } else {
             if let Some(parent) = outpath.parent() {
-                fs::create_dir_all(parent).unwrap();
+                fs::create_dir_all(parent)
+                    .map_err(|e| format!("cannot create dir {}: {}", parent.display(), e))?;
             }
-            let mut outfile = File::create(&outpath).unwrap();
-            std::io::copy(&mut file, &mut outfile).unwrap();
+            let mut outfile = File::create(&outpath)
+                .map_err(|e| format!("cannot create file {}: {}", outpath.display(), e))?;
+            std::io::copy(&mut file, &mut outfile)
+                .map_err(|e| format!("cannot write file {}: {}", outpath.display(), e))?;
         }
 
         let percentage = ((i + 1) as f64 / total_files as f64) * 100.0;
         app.emit("unpack:progress", UnpackProgress { percentage })
             .ok();
     }
+
+    write_log("unpack: all entries extracted");
+    Ok(())
 }
 
 async fn new_load_order() -> Result<String, ()> {
     let drive = gdrive::GoogleDriveClient::new().await;
     let files = drive.list_files(FOLDER_ID).await;
-    let (id, _, _) = files
-        .iter()
-        .find(|(_, name, _)| name == "modlist")
-        .ok_or(())?;
-    let txt = drive.load_text(id).await.map_err(|_| ())?;
+    let (id, _, _) = match files.iter().find(|(_, name, _)| name == "modlist") {
+        Some(f) => f,
+        None => {
+            write_log("new_load_order: ERROR 'modlist' not found in drive folder");
+            return Err(());
+        }
+    };
+    let txt = match drive.load_text(id).await {
+        Ok(t) => t,
+        Err(_) => {
+            write_log("new_load_order: ERROR failed to load 'modlist' text");
+            return Err(());
+        }
+    };
     if txt.is_empty() {
+        write_log("new_load_order: ERROR 'modlist' text is empty");
         Err(())
     } else {
+        write_log(&format!("new_load_order: loaded modlist ({} chars)", txt.len()));
         Ok(txt)
     }
 }
@@ -274,21 +308,20 @@ fn remove_whitespace(s: &str) -> String {
     s.trim().replace('\u{FEFF}', "")
 }
 
-fn update_modlist() {
+fn update_modlist() -> Result<(), Error> {
     let path = profile_dir().join("modlist.txt");
-    let mut file = OpenOptions::new()
-        .read(true)
-        .write(true)
-        .open(&path)
-        .expect("cannot open modlist.txt");
+    write_log(&format!("update_modlist: opening {}", path.display()));
+    let mut file = OpenOptions::new().read(true).write(true).open(&path)?;
 
     let mut content = String::new();
-    file.read_to_string(&mut content).unwrap();
+    file.read_to_string(&mut content)?;
 
     let new_content = format!("+RFAD_PATCH\n{}", content.replace("+RFAD_PATCH\n", ""));
-    file.seek(SeekFrom::Start(0)).unwrap();
-    file.write_all(new_content.as_bytes()).unwrap();
-    file.set_len(new_content.len() as u64).unwrap();
+    file.seek(SeekFrom::Start(0))?;
+    file.write_all(new_content.as_bytes())?;
+    file.set_len(new_content.len() as u64)?;
+    write_log("update_modlist: +RFAD_PATCH written");
+    Ok(())
 }
 
 async fn update_order(path: &PathBuf, new_list: &str, separator: &str) -> Result<(), Error> {
@@ -436,14 +469,26 @@ fn get_local_version() -> String {
         .join("RFAD_PATCH")
         .join(LOCAL_VERSION_FILE_NAME);
     if !path.exists() {
-        return "NO_PATCH".into();
+        return RemoteStatus::NoPatch.into();
     }
-    fs::read_to_string(path).unwrap_or_else(|_| "NO_PATCH".into())
+    fs::read_to_string(path).unwrap_or_else(|_| RemoteStatus::NoPatch.into())
 }
 
 #[tauri::command]
 async fn get_remote_version(app: AppHandle) -> String {
+    write_log("get_remote_version: START");
     let drive = gdrive::GoogleDriveClient::new().await;
+
+    if let Err(kind) = drive.auth_status() {
+        let status = match kind {
+            gdrive::DriveError::Network => RemoteStatus::NetError,
+            gdrive::DriveError::Auth => RemoteStatus::AuthError,
+            gdrive::DriveError::Other => RemoteStatus::DriveError,
+        };
+        write_log(&format!("get_remote_version: drive unavailable -> {}", status.as_str()));
+        return status.into();
+    }
+
     let files = drive.list_files(FOLDER_ID).await;
 
     app.emit(
@@ -456,28 +501,52 @@ async fn get_remote_version(app: AppHandle) -> String {
 
     if let Some((id, _, _)) = files.iter().find(|(_, name, _)| name == "version") {
         let tmp = base_dir().join(REMOTE_VERSION_FILE_NAME);
-        drive
-            .download_file(id, MimeType::Txt, tmp.to_str().unwrap(), app.clone())
+        if let Err(e) = drive
+            .download_file(id, MimeType::Txt, tmp.to_str().unwrap_or_default(), app.clone())
             .await
-            .ok();
-        let ver = fs::read_to_string(&tmp).unwrap_or_else(|_| "NO_PATCH".into());
+        {
+            write_log(&format!("get_remote_version: ERROR downloading version file: {}", e));
+        }
+
+        let ver = fs::read_to_string(&tmp).unwrap_or_else(|_| RemoteStatus::NoPatch.into());
+
         let _ = fs::remove_file(&tmp);
+        write_log(&format!("get_remote_version: remote version = {}", ver));
+
         ver
     } else {
-        "NO_PATCH".into()
+        write_log("get_remote_version: 'version' file not found in drive folder");
+        RemoteStatus::NoPatch.into()
     }
 }
 
 #[tauri::command]
 async fn update(app: AppHandle) -> bool {
+    write_log("=== update: START ===");
+
     let drive = gdrive::GoogleDriveClient::new().await;
+    write_log(&format!("update: listing patch folder {}", FOLDER_ID));
+
     let files = drive.list_files(FOLDER_ID).await;
-    let (zip_id, _, _) = files
+    write_log(&format!("update: drive returned {} files", files.len()));
+
+    let zip_id = match files
         .iter()
         .find(|(_, _, mime)| *mime == "application/x-zip-compressed")
-        .expect("zip not found");
+    {
+        Some((id, name, _)) => {
+            write_log(&format!("update: found patch zip '{}' (id={})", name, id));
+            id.clone()
+        }
+        None => {
+            write_log("update: ERROR patch zip not found (mime application/x-zip-compressed) — aborting");
+            return false;
+        }
+    };
 
     let zip_path = base_dir().join(LOCAL_UPDATE_FILE_NAME);
+    write_log(&format!("update: downloading patch to {}", zip_path.display()));
+
     app.emit(
         "update:progress",
         UpdateProgress {
@@ -485,14 +554,21 @@ async fn update(app: AppHandle) -> bool {
         },
     )
     .ok();
-    let _ = drive
+
+    if let Err(e) = drive
         .download_file(
-            zip_id,
+            &zip_id,
             MimeType::OctetStream,
-            zip_path.to_str().unwrap(),
+            zip_path.to_str().unwrap_or_default(),
             app.clone(),
         )
-        .await;
+        .await
+    {
+        write_log(&format!("update: ERROR download failed: {} — aborting", e));
+        return false;
+    }
+
+    write_log("update: patch downloaded");
 
     app.emit(
         "update:progress",
@@ -503,13 +579,39 @@ async fn update(app: AppHandle) -> bool {
     .ok();
 
     let patch_dir = base_dir().join("mods").join("RFAD_PATCH");
+    write_log(&format!("update: preparing patch dir {}", patch_dir.display()));
     if patch_dir.exists() {
-        fs::remove_dir_all(&patch_dir).unwrap();
+        if let Err(e) = fs::remove_dir_all(&patch_dir) {
+            write_log(&format!("update: ERROR cannot remove old patch dir: {} — aborting", e));
+            return false;
+        }
     }
-    fs::create_dir_all(&patch_dir).unwrap();
 
-    let zip_file = File::open(&zip_path).unwrap();
-    let archive = ZipArchive::new(zip_file).unwrap();
+    if let Err(e) = fs::create_dir_all(&patch_dir) {
+        write_log(&format!("update: ERROR cannot create patch dir: {} — aborting", e));
+        return false;
+    }
+
+    write_log(&format!("update: opening downloaded zip {}", zip_path.display()));
+    let zip_file = match File::open(&zip_path) {
+        Ok(f) => f,
+        Err(e) => {
+            write_log(&format!("update: ERROR cannot open downloaded zip: {} — aborting", e));
+            return false;
+        }
+    };
+
+    let archive = match ZipArchive::new(zip_file) {
+        Ok(a) => a,
+        Err(e) => {
+            write_log(&format!(
+                "update: ERROR cannot read zip (corrupt/incomplete download?): {} — aborting",
+                e
+            ));
+            return false;
+        }
+    };
+
     app.emit(
         "update:progress",
         UpdateProgress {
@@ -517,7 +619,12 @@ async fn update(app: AppHandle) -> bool {
         },
     )
     .ok();
-    unpack(archive, patch_dir.clone(), &app).await;
+
+    if let Err(e) = unpack(archive, patch_dir.clone(), &app).await {
+        write_log(&format!("update: ERROR unpack failed: {} — aborting", e));
+        return false;
+    }
+
     app.emit(
         "update:progress",
         UpdateProgress {
@@ -526,7 +633,12 @@ async fn update(app: AppHandle) -> bool {
     )
     .ok();
 
+    write_log("update: fetching load order (modlist) from drive");
     let new_list = remove_whitespace(&new_load_order().await.unwrap_or_default());
+    if new_list.is_empty() {
+        write_log("update: WARN modlist empty/unavailable — skipping load order rewrite");
+    }
+
     app.emit(
         "update:progress",
         UpdateProgress {
@@ -535,16 +647,28 @@ async fn update(app: AppHandle) -> bool {
     )
     .ok();
 
-    update_modlist();
+    if let Err(e) = update_modlist() {
+        write_log(&format!("update: ERROR updating modlist.txt: {}", e));
+    }
     if !new_list.is_empty() {
         let plugins_txt = profile_dir().join("plugins.txt");
         let loadorder_txt = profile_dir().join("loadorder.txt");
-        update_order(&plugins_txt, &new_list, "*Requiem for the Indifferent.esp")
-            .await
-            .expect("Error updating plugins.txt");
-        update_order(&loadorder_txt, &new_list, "Requiem for the Indifferent.esp")
-            .await
-            .expect("Error updating loadorder.txt");
+
+        write_log(&format!("update: rewriting {}", plugins_txt.display()));
+
+        if let Err(e) =
+            update_order(&plugins_txt, &new_list, "*Requiem for the Indifferent.esp").await
+        {
+            write_log(&format!("update: ERROR updating plugins.txt: {}", e));
+        }
+
+        write_log(&format!("update: rewriting {}", loadorder_txt.display()));
+
+        if let Err(e) =
+            update_order(&loadorder_txt, &new_list, "Requiem for the Indifferent.esp").await
+        {
+            write_log(&format!("update: ERROR updating loadorder.txt: {}", e));
+        }
     }
 
     app.emit(
@@ -556,6 +680,8 @@ async fn update(app: AppHandle) -> bool {
     .ok();
 
     let _ = fs::remove_file(&zip_path);
+    write_log("=== update: DONE (success) ===");
+
     true
 }
 

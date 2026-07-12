@@ -5,7 +5,7 @@ import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { getVersion } from '@tauri-apps/api/app';
 
-import { type DownloadProgress, EventNames, type UnpackProgress, type UpdateProgress, UpdateStatus } from '~/types/types';
+import { type DownloadProgress, EventNames, RemoteStatus, type UnpackProgress, type UpdateProgress, UpdateStatus } from '~/types/types';
 import config from '~/config';
 
 import DiscordIcon from '~/components/icons/Discord.vue';
@@ -22,6 +22,7 @@ import Minus from '~/components/icons/Minus.vue';
 import Expand from '~/components/icons/Expand.vue';
 import SettingsModal from '~/components/SettingsModal.vue';
 import RemoteErrorMessage from '~/components/RemoteErrorMessage.vue';
+import NetworkErrorMessage from '~/components/NetworkErrorMessage.vue';
 
 const firstStart = ref(true)
 
@@ -45,6 +46,7 @@ const updateUnpacked = ref(false)
 
 const updateAvailable = ref(false)
 const remoteError = ref(false)
+const netError = ref(false)
 
 const additionalProgress = ref(0)
 
@@ -184,15 +186,34 @@ onMounted(async () => {
   }
 
   invoke<string>('get_local_version').then(res => {
-    localVersion.value = res === 'NO_PATCH' ? '0.0' : res
+    localVersion.value = res === RemoteStatus.NoPatch ? '0.0' : res
   })
   invoke<string>('get_remote_version').then(res => {
-    if (res === 'NO_DIR') {
+    if (res === RemoteStatus.NoDir) {
       remoteVersion.value = '0.0'
       dirError.value = true
       return
     }
-    remoteVersion.value = res === 'NO_PATCH' ? '0.0' : res
+
+    if (
+      [
+        RemoteStatus.NetError,
+        RemoteStatus.AuthError,
+        RemoteStatus.DriveError
+      ].includes(res as RemoteStatus)
+    ) {
+      remoteVersion.value = '0.0'
+      updateAvailable.value = false
+
+      if (isPathExist.value) {
+        if (res === RemoteStatus.NetError) netError.value = true
+        else remoteError.value = true
+      }
+
+      return
+    }
+
+    remoteVersion.value = res === RemoteStatus.NoPatch ? '0.0' : res
 
     if (remoteVersion.value === '0.0') {
       if (isPathExist.value) remoteError.value = true
@@ -270,7 +291,7 @@ const update = async (isFirstStart: boolean = false) => {
   updateStarted.value = false
 
   invoke<string>('get_local_version').then(res => {
-    localVersion.value = res === 'NO_PATCH' ? '0.0' : res
+    localVersion.value = res === RemoteStatus.NoPatch ? '0.0' : res
     updateAvailable.value = remoteVersion.value !== localVersion.value
   })
 
@@ -419,6 +440,7 @@ const checkUpdates = async () => {
             <DirErrorMessage v-if="dirError" class="w-full"/>
             <DirErrorMessage v-if="googleDriveDirError" class="w-full"/>
             <RemoteErrorMessage v-if="remoteError && !updateStarted" class="w-full"/>
+            <NetworkErrorMessage v-if="netError && !updateStarted" class="w-full"/>
             <UpdatingMessage :percentage="updatePercentage" v-if="updateStarted" class="w-full"/>
             <UnpackingMessage :percentage="updateUnpackPercentage" v-if="updateUnpackStarted" class="w-full"/>
             <DownloadingMessage :speed="updateDownloadSpeed" :percentage="updateDownloadPercentage" v-if="updateDownloadStarted" class="w-full"/>

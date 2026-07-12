@@ -27,3 +27,11 @@ export enum EventNames {
   DownloadProgress = 'download:progress',
   UnpackProgress = 'unpack:progress',
 }
+
+export enum RemoteStatus {
+  NoDir = 'NO_DIR',
+  NoPatch = 'NO_PATCH',
+  NetError = 'NET_ERROR',
+  AuthError = 'AUTH_ERROR',
+  DriveError = 'DRIVE_ERROR',
+}
