@@ -1,5 +1,6 @@
 mod events;
 mod gdrive;
+mod modlist;
 mod status;
 
 use crate::events::{UnpackProgress, UpdateProgress, UpdateStatus};
@@ -311,16 +312,11 @@ fn remove_whitespace(s: &str) -> String {
 fn update_modlist() -> Result<(), Error> {
     let path = profile_dir().join("modlist.txt");
     write_log(&format!("update_modlist: opening {}", path.display()));
-    let mut file = OpenOptions::new().read(true).write(true).open(&path)?;
-
-    let mut content = String::new();
-    file.read_to_string(&mut content)?;
-
-    let new_content = format!("+RFAD_PATCH\n{}", content.replace("+RFAD_PATCH\n", ""));
-    file.seek(SeekFrom::Start(0))?;
-    file.write_all(new_content.as_bytes())?;
-    file.set_len(new_content.len() as u64)?;
-    write_log("update_modlist: +RFAD_PATCH written");
+    if modlist::enable_patch_in_file(&path)? {
+        write_log("update_modlist: +RFAD_PATCH written");
+    } else {
+        write_log("update_modlist: +RFAD_PATCH already in place, file untouched");
+    }
     Ok(())
 }
 
