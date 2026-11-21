@@ -26,6 +26,7 @@ const REMOTE_VERSION_FILE_NAME: &str = "remote_version.txt";
 const LOCAL_UPDATE_FILE_NAME: &str = "update.zip";
 const MODS_JSON_FILE_NAME: &str = "launcher-mods.json";
 const PATCHES_JSON_FILE_NAME: &str = "launcher-patches.json";
+const ADDONS_JSON_FILE_NAME: &str = "official_addons.json";
 
 #[tauri::command]
 fn exe_dir() -> PathBuf {
@@ -729,16 +730,12 @@ fn open_mo2() {
 //     }
 // }
 
-#[tauri::command]
-async fn load_json_patches(app: AppHandle) -> String {
+async fn load_json_from_drive(app: AppHandle, file_name: &str) -> String {
     let drive = gdrive::GoogleDriveClient::new().await;
     let files = drive.list_files(FOLDER_ID).await;
 
-    if let Some((id, _, _)) = files
-        .iter()
-        .find(|(_, name, _)| name == PATCHES_JSON_FILE_NAME)
-    {
-        let tmp = base_dir().join(PATCHES_JSON_FILE_NAME);
+    if let Some((id, _, _)) = files.iter().find(|(_, name, _)| name == file_name) {
+        let tmp = base_dir().join(file_name);
         drive
             .download_file(id, MimeType::Json, tmp.to_str().unwrap(), app.clone())
             .await
@@ -749,6 +746,16 @@ async fn load_json_patches(app: AppHandle) -> String {
     } else {
         "[]".into()
     }
+}
+
+#[tauri::command]
+async fn load_json_patches(app: AppHandle) -> String {
+    load_json_from_drive(app, PATCHES_JSON_FILE_NAME).await
+}
+
+#[tauri::command]
+async fn load_json_addons(app: AppHandle) -> String {
+    load_json_from_drive(app, ADDONS_JSON_FILE_NAME).await
 }
 
 #[tauri::command]
@@ -823,6 +830,7 @@ pub fn run(args: Vec<String>) {
             get_voice_locale,
             update_game_settings,
             load_json_patches,
+            load_json_addons,
             update_launcher,
             exe_dir,
             start_new_launcher

@@ -23,6 +23,7 @@ import Expand from '~/components/icons/Expand.vue';
 import SettingsModal from '~/components/SettingsModal.vue';
 import RemoteErrorMessage from '~/components/RemoteErrorMessage.vue';
 import NetworkErrorMessage from '~/components/NetworkErrorMessage.vue';
+import type { AddonComponentProps } from '~/components/AddonComponent.vue';
 
 const firstStart = ref(true)
 
@@ -60,6 +61,17 @@ const modsScrollableToTop = ref(false);
 const launcherUpdate = ref(false)
 
 const patches = ref<PatchComponentProps[]>([])
+const addons = ref<AddonComponentProps[]>([])
+
+function parseJsonArray<T>(json: string): T[] {
+  try {
+    const parsed = JSON.parse(json)
+    return Array.isArray(parsed) ? parsed : []
+  } catch (e) {
+    console.error('Failed to parse json', e)
+    return []
+  }
+}
 
 const fpsOptions = [ 60, 75, 120, 144, 165 ]
 const selectedFps = ref<number | null>(null)
@@ -224,8 +236,12 @@ onMounted(async () => {
     updateAvailable.value = remoteVersion.value !== localVersion.value
   })
 
-  invoke<string>('load_json_patches').then(async res => {
-    patches.value = JSON.parse(res) as PatchComponentProps[]
+  Promise.all([
+    invoke<string>('load_json_addons'),
+    invoke<string>('load_json_patches')
+  ]).then(async ([ addonsJson, patchesJson ]) => {
+    addons.value = parseJsonArray<AddonComponentProps>(addonsJson)
+    patches.value = parseJsonArray<PatchComponentProps>(patchesJson)
 
     await wait(50)
     observeScrollability('patches')
@@ -514,6 +530,17 @@ const checkUpdates = async () => {
             <!--              :url="mod.url"-->
             <!--            />-->
 
+            <AddonComponent
+              v-for="addon in addons"
+              :key="`addon-${addon.name}`"
+              :name="addon.name"
+              :description="addon.description"
+              :image="addon.image"
+              :date="addon.date"
+              :status="addon.status"
+              :gradient="addon.gradient"
+              :url="addon.url"
+            />
             <PatchComponent
               v-for="patch in patches"
               :key="patch.version"

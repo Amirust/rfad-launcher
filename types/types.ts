@@ -35,3 +35,8 @@ export enum RemoteStatus {
   AuthError = 'AUTH_ERROR',
   DriveError = 'DRIVE_ERROR',
 }
+
+export enum AddonStatus {
+  Announced = 'announced',
+  Released = 'released',
+}
