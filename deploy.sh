@@ -35,10 +35,10 @@ sign() {
 }
 
 echo "==> Checking key password"
-TMP=$(mktemp)
-echo test > "$TMP"
-sign "$TMP"
-rm -f "$TMP" "$TMP.sig"
+TEST_FILE=$(mktemp)
+echo test > "$TEST_FILE"
+sign "$TEST_FILE"
+rm -f "$TEST_FILE" "$TEST_FILE.sig"
 
 echo "==> Running tests"
 (cd src-tauri && cargo test --lib --quiet)

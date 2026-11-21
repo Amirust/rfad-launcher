@@ -1,0 +1,7 @@
+# Signed files: git must not touch line endings, otherwise signatures break
+lversions.json -text
+*.sig -text
+# Batch files need CRLF
+*.bat text eol=crlf
+# Shell scripts need LF
+*.sh text eol=lf
