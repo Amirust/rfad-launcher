@@ -58,14 +58,14 @@ const statusLabel = computed(() =>
 
         <div class="relative flex flex-col w-86 gap-2 p-4 pt-3 text-secondary text-sm tracking-wide">
           <span v-if="!props.image" class="addon-badge">{{ statusLabel }}</span>
-          <div class="addon-title font-bold text-2xl leading-7">
+          <div class="addon-title font-bold text-2xl leading-7 text-balance">
             {{ props.name }}
           </div>
           <div class="flex flex-row gap-2 items-center font-medium">
             <Clock class="w-3.5 h-3.5"/>
             {{ props.date }}
           </div>
-          <div class="font-normal text-primary whitespace-pre-line break-words">
+          <div class="font-normal text-primary whitespace-pre-line break-words text-pretty">
             {{ props.description }}
           </div>
         </div>

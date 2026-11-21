@@ -353,23 +353,28 @@ const startGame = async () => {
 }
 
 const checkUpdates = async () => {
-  // ?t=<timestamp> to avoid cache
-  const req = await fetch(`https://raw.githubusercontent.com/Amirust/rfad-launcher/main/lversions.json?t=${Date.now()}`, {
-    cache: 'no-store'
-  })
-  const { version, downloadUrl } = await req.json() as { version: string, downloadUrl: string }
+  launcherVersion.value = await getVersion()
 
-  const currentVersion = await getVersion()
-  launcherVersion.value = currentVersion
-  if (currentVersion !== version) {
-    launcherUpdate.value = true
-
-    console.log(await invoke('update_launcher', {
-      downloadLink: downloadUrl
-    }))
-
-    await invoke('start_new_launcher')
+  // Manifest signature, version and exe signature are all verified in Rust
+  let newVersion: string | null
+  try {
+    newVersion = await invoke<string | null>('check_launcher_update')
+  } catch (e) {
+    console.error('Launcher update check failed:', e)
+    return
   }
+  if (!newVersion) return
+
+  launcherUpdate.value = true
+  try {
+    console.log(await invoke('update_launcher'))
+  } catch (e) {
+    console.error('Launcher update rejected:', e)
+    launcherUpdate.value = false
+    return
+  }
+
+  await invoke('start_new_launcher')
 }
 </script>
 

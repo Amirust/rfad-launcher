@@ -1,6 +1,7 @@
 mod events;
 mod gdrive;
 mod modlist;
+mod self_update;
 mod status;
 
 use crate::events::{UnpackProgress, UpdateProgress, UpdateStatus};
@@ -13,10 +14,8 @@ use std::{
     path::PathBuf,
     time::{Duration, SystemTime},
 };
-use futures::StreamExt;
 use tauri::utils::mime_type::MimeType;
 use tauri::{AppHandle, Emitter, Manager};
-use tokio::io::AsyncWriteExt;
 use tokio::time::sleep;
 use zip::ZipArchive;
 
@@ -759,40 +758,6 @@ async fn load_json_addons(app: AppHandle) -> String {
 }
 
 #[tauri::command]
-async fn update_launcher(download_link: String) -> Result<String, String> {
-    let exe_path = exe_dir().join("rfad-launcher.exe");
-    if exe_path.exists() {
-        fs::rename(exe_path, exe_dir().join("old-launcher.exe")).expect("Failed to rename file");
-    }
-
-    let response = reqwest::get(&download_link)
-        .await
-        .map_err(|e| format!("Request failed: {}", e))?;
-
-    if !response.status().is_success() {
-        return Err(format!("Server returned error: {}", response.status()));
-    }
-
-    let dest_path = exe_dir().join("rfad-launcher.exe");
-
-    let mut file = tokio::fs::File::create(&dest_path)
-        .await
-        .map_err(|e| format!("Failed to create file '{:?}': {}", dest_path, e))?;
-
-    let mut stream = response.bytes_stream();
-    while let Some(chunk) = stream.next().await {
-        let chunk = chunk.map_err(|e| format!("Error while downloading: {}", e))?;
-        file.write_all(&chunk)
-            .await
-            .map_err(|e| format!("Error writing to file: {}", e))?;
-    }
-
-    write_log("update_launcher finished download");
-
-    Ok("Download complete!".to_string())
-}
-
-#[tauri::command]
 fn start_new_launcher() {
     let new_path = exe_dir().join("rfad-launcher.exe");
     write_log(&format!(
@@ -831,7 +796,8 @@ pub fn run(args: Vec<String>) {
             update_game_settings,
             load_json_patches,
             load_json_addons,
-            update_launcher,
+            self_update::check_launcher_update,
+            self_update::update_launcher,
             exe_dir,
             start_new_launcher
         ])
